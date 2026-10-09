@@ -1,0 +1,16 @@
+# Environnement Python
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Fichiers système et temporaires
+.DS_Store
+~$*.xlsx
+
+# Documents du cours (restent sur le disque, hors du livrable)
+rush-2/
+rush-2.zip
+rush2-pharma_sales.pdf
+rush2-kick_off.pptx
+Charte_graphique_Rush2.pdf
