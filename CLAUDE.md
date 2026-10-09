@@ -53,6 +53,6 @@
 
 ## Environnement technique
 
-- Python 3.12+ obligatoire (les versions figées de numpy et scipy dans `requirements.txt` l'exigent). Environnement virtuel dans `.venv/`.
+- Python 3.14 pour tout le groupe (version de référence ; 3.12 au minimum, exigé par les versions figées de numpy et scipy). Environnement virtuel dans `.venv/`.
 - Toutes les constantes (chemins, noms ATC, couleurs) sont dans `src/config.py` : les importer, ne jamais les redéfinir ailleurs.
 - Les documents du cours (sujet, charte, kick-off, zip d'origine) sont dans le dossier local mais ignorés par Git.

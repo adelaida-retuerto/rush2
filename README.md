@@ -4,7 +4,9 @@ Analyse de près de 6 ans de ventes (janvier 2014 à octobre 2019) de 8 groupes 
 
 ## Installation
 
-Il faut **Python 3.12 ou plus récent** (`python3 --version`). Sur Mac, si la version est trop ancienne : `brew install python@3.12`, puis utiliser `python3.12` à la place de `python3` ci-dessous.
+Version de référence du groupe : **Python 3.14** (vérifier avec `python3 --version`).
+- Mac : `brew install python@3.14`
+- Windows : installateur 3.14 sur [python.org](https://www.python.org/downloads/), en cochant « Add python.exe to PATH » (puis utiliser `python` à la place de `python3`)
 
 ```bash
 python3 -m venv .venv
