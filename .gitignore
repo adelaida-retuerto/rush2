@@ -4,6 +4,9 @@ __pycache__/
 *.pyc
 .ipynb_checkpoints/
 
+# Notebooks d'exploration personnels (jamais versionnés)
+brouillons/
+
 # Fichiers système et temporaires
 .DS_Store
 ~$*.xlsx
