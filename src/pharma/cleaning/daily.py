@@ -1,28 +1,22 @@
 """Nettoyage de l'export journalier (Pharma_Ventes_Daily.csv).   [Ihman]
 
-Même modèle que hourly.py : on lance les contrôles communs (checks.py), puis les
-contrôles propres au journalier, et chaque résultat est écrit dans le journal commun.
-La référence reste l'horaire : le journalier est validé s'il concorde avec lui.
+Contrat (docs/data_contract.md) :
+    clean_daily(export, derived, daily_all, complete_day, rows) -> (daily, ecarts)
+
+L'horaire est la référence : l'export journalier sert de contrôle. Les ventes renvoyées
+sont les jours COMPLETS recalculés depuis l'horaire. Chaque contrôle écrit sa ligne dans
+le journal commun (rows).
 """
 from __future__ import annotations
-
-from dataclasses import dataclass
 
 import pandas as pd
 
 from . import checks
-from .hourly import HourlyResult
+from .checks import G
 
 # Dans l'export, la colonne Hour d'un jour = la somme des heures présentes ce jour-là.
 # Un jour complet a les 24 heures : 0 + 1 + ... + 23 = 276.
 HOUR_JOUR_COMPLET = sum(range(24))
-
-
-@dataclass
-class DailyResult:
-    daily: pd.DataFrame              # ventes par jour, sans doublon (une ligne par jour, 8 groupes)
-    jours_incomplets: pd.DataFrame   # jours où la colonne Hour n'est pas 276, avec sa valeur
-    ecarts: pd.DataFrame             # cases qui ne concordent pas avec l'horaire (vide si tout va bien)
 
 
 def reperer_jours_incomplets(derived: pd.DataFrame) -> pd.DataFrame:
@@ -36,31 +30,52 @@ def reperer_jours_incomplets(derived: pd.DataFrame) -> pd.DataFrame:
     return derived.loc[incomplets, ["Hour"]]
 
 
-def clean_daily(export: pd.DataFrame, derived: pd.DataFrame, rows: list,
-                horaire: HourlyResult) -> DailyResult:
-    """Contrôle l'export journalier et écrit chaque résultat dans le journal (rows).
+def clean_daily(export: pd.DataFrame, derived: pd.DataFrame | None, daily_all: pd.DataFrame,
+                complete_day: pd.Series, rows: list) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Contrôle l'export journalier et renvoie (jours complets recalculés depuis l'horaire, écarts).
 
-    export   : ventes lues par loading.load_export("daily")
-    derived  : colonnes Year, Month, Hour, Weekday Name, lues par loading.load_derived_columns("daily")
-    horaire  : résultat de hourly.clean_hourly, qui sert de référence
+    export       : ventes lues par loading.load_export("daily")
+    derived      : colonnes Year, Month, Hour, Weekday Name (loading.load_derived_columns("daily"))
+    daily_all    : ventes par jour recalculées depuis l'horaire (tous les jours)
+    complete_day : True si le jour est complet selon l'horaire
+    rows         : le journal commun, où chaque contrôle ajoute sa ligne
     """
-    # Contrôles communs : périmètre, doublons, manquants, négatifs, Year/Month/Weekday Name
+    # Contrôles 1 à 4 : périmètre, doublons, manquants, négatifs
     checks.scope(rows, "daily", export)
     journalier = checks.duplicates_and_negatives(rows, "daily", export)
+
+    # Contrôle 5 : aucun jour ne doit manquer entre le premier et le dernier
+    tous_les_jours = pd.date_range(journalier.index.min(), journalier.index.max(), freq="D")
+    manquants = tous_les_jours.difference(journalier.index)
+    checks.log(rows, "Jours manquants dans la suite", "daily", len(manquants) == 0,
+               f"{len(manquants)} jour(s) manquant(s)",
+               "Aucune action" if len(manquants) == 0 else "Jours recalculés depuis l'horaire")
+
+    # Contrôle 6 : Year, Month, Weekday Name cohérents avec la date
     checks.derived_columns(rows, "daily", derived)
 
     # Contrôle propre au journalier : la colonne Hour révèle les jours incomplets
-    incomplets = reperer_jours_incomplets(derived)
-    detail = ", ".join(f"{jour:%d/%m/%Y} (Hour = {h})" for jour, h in incomplets["Hour"].items())
-    checks.log(rows, "Jours incomplets (colonne Hour ≠ 276)", "daily", len(incomplets) == 0,
-               detail or "Tous les jours sont complets",
-               "Information : c'est l'horaire qui décide quels jours sont exclus des statistiques")
+    if derived is not None and "Hour" in derived:
+        incomplets = reperer_jours_incomplets(derived)
+        detail = ", ".join(f"{jour:%d/%m/%Y} (Hour = {h})" for jour, h in incomplets["Hour"].items())
+        checks.log(rows, "Jours incomplets selon la colonne Hour (≠ 276)", "daily", len(incomplets) == 0,
+                   detail or "Tous les jours sont complets",
+                   "Information : l'horaire décide quels jours sont exclus (contrôle suivant)")
 
-    # Réconciliation : chaque jour doit égaler la somme de ses heures dans l'horaire
-    ecarts = checks.compare(journalier, horaire.daily_all, "daily", "%d/%m/%Y")
+    # Contrôle 7 : les jours incomplets selon l'horaire sont exclus des ventes propres
+    exclus = complete_day[~complete_day].index
+    checks.log(rows, "Jours incomplets exclus", "daily", len(exclus) == 0,
+               ", ".join(f"{jour:%d/%m/%Y}" for jour in exclus) or "Aucun",
+               "Exclus des statistiques journalières" if len(exclus) else "Aucune action")
+
+    # Contrôle 9 : chaque jour de l'export doit égaler la somme de ses heures
+    ecarts = checks.compare(journalier, daily_all, "daily", "%d/%m/%Y")
     checks.log_reconciliation(rows, "daily", journalier, ecarts)
 
-    return DailyResult(daily=journalier, jours_incomplets=incomplets, ecarts=ecarts)
+    # Ventes propres : les jours complets, recalculés depuis l'horaire
+    jours_complets = complete_day[complete_day].index
+    daily = daily_all.loc[jours_complets, G]
+    return daily, ecarts
 
 
 # Test : depuis le dossier src, lancer   python -m pharma.cleaning.daily
@@ -69,8 +84,10 @@ if __name__ == "__main__":
 
     journal = []
     horaire = hourly.clean_hourly(loading.load_export("hourly"), loading.load_derived_columns("hourly"), journal)
-    resultat = clean_daily(loading.load_export("daily"), loading.load_derived_columns("daily"), journal, horaire)
+    daily, ecarts = clean_daily(loading.load_export("daily"), loading.load_derived_columns("daily"),
+                                horaire.daily_all, horaire.complete_day, journal)
 
     # On n'affiche que les lignes du journal qui concernent le journalier
-    lignes_daily = pd.DataFrame(journal)
-    print(lignes_daily[lignes_daily["Export"] == "daily"][["Contrôle", "Statut", "Détail"]].to_string(index=False))
+    lignes = pd.DataFrame(journal)
+    print(lignes[lignes["Export"] == "daily"][["Contrôle", "Statut", "Détail"]].to_string(index=False))
+    print(f"\nVentes propres : {len(daily)} jours complets, du {daily.index.min():%d/%m/%Y} au {daily.index.max():%d/%m/%Y}")
