@@ -74,6 +74,8 @@ Puis `jupyter lab` depuis le dossier du projet, et choisir le noyau **Python (ru
 
 ## Utilisation (à chaque fois)
 
+**Le plus simple : double-cliquer sur `lancer_mac.command` (Mac) ou `lancer_windows.bat` (Windows)**, à la racine du projet : il trouve l'environnement conda `rush2` (sinon `.venv`), lance `main.py --offline`, ouvre le classeur du mois dans Excel et garde la fenêtre ouverte pour lire les messages. Sinon, en ligne de commande :
+
 | Étape | conda | venv (Mac) | venv (Windows) |
 | --- | --- | --- | --- |
 | 1. Activer l'environnement | `conda activate rush2` | `source .venv/bin/activate` | `.venv\Scripts\activate` |
