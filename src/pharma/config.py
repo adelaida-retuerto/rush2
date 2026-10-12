@@ -42,6 +42,28 @@ GROUP_CODES = list(GROUPS)
 SENSITIVE_GROUPS = ["N05B", "N05C"]  # anxiété / sommeil : données de santé sensibles
 UNIT_LABEL = "quantités (unité du logiciel de caisse, non documentée)"
 
+# --- Hiérarchie ATC : chaque code se range dans sa famille par son préfixe --------------------
+# Un code ATC se lit de gauche à droite, du plus général au plus précis :
+#   N = système nerveux > N02 = analgésiques > N02B = autres analgésiques > N02BE = anilides (paracétamol).
+# Familles de la charte, par préfixe : le préfixe le plus long qui correspond l'emporte (src/pharma/atc.py).
+# Un nouveau code (ex. M01AC) rejoint donc sa famille sans rien changer d'autre.
+FAMILLES_ATC = {
+    "M01": "Anti-inflammatoires",
+    "N02": "Antalgiques",
+    "N05": "Psycholeptiques",
+    "R": "Respiratoire",
+}
+# 1er niveau ATC (classification officielle de l'OMS) : sert de famille de repli pour un code
+# dont le préfixe n'est pas dans FAMILLES_ATC (ex. A02 -> « Autres · Système digestif et métabolisme »).
+NIVEAU1_ATC = {
+    "A": "Système digestif et métabolisme", "B": "Sang et organes hématopoïétiques",
+    "C": "Système cardiovasculaire", "D": "Dermatologie",
+    "G": "Système génito-urinaire et hormones sexuelles", "H": "Hormones systémiques",
+    "J": "Anti-infectieux généraux à usage systémique", "L": "Antinéoplasiques et immunomodulateurs",
+    "M": "Muscle et squelette", "N": "Système nerveux", "P": "Antiparasitaires, insecticides et répulsifs",
+    "R": "Système respiratoire", "S": "Organes sensoriels", "V": "Divers",
+}
+
 # --- Contrôles qualité ---------------------------------------------------------------------
 RECONCILIATION_TOLERANCE = 1e-6  # écart toléré entre deux exports (arrondis flottants)
 OUTLIER_WINDOW_DAYS = 29         # fenêtre glissante (jours) pour la médiane robuste

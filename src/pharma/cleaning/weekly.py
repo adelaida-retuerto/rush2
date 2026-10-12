@@ -13,6 +13,7 @@ import pandas as pd
 
 from . import checks
 from .checks import G
+from .daily import signaler_codes_non_suivis
 
 
 def verifier_dimanches(hebdomadaire: pd.DataFrame) -> pd.DataFrame:
@@ -63,6 +64,9 @@ def clean_weekly(export: pd.DataFrame, derived: pd.DataFrame | None, daily_all: 
 
     # Contrôle 6 : colonnes dérivées (aucune dans l'hebdomadaire : rien n'est écrit)
     checks.derived_columns(rows, "weekly", derived)
+
+    # Nouveau code ATC dans l'export ? (même contrôle que daily.py)
+    signaler_codes_non_suivis(rows, "weekly", derived)
 
     # Contrôle 9 : on additionne les jours de l'horaire par semaine finissant le dimanche (W-SUN)
     semaines_recalculees = daily_all.resample("W-SUN").sum()

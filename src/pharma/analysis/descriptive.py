@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from .. import config
+from .. import atc, config
 
 G = config.GROUP_CODES
 NOMS_MOIS = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
@@ -34,6 +34,24 @@ def group_volumes(c) -> pd.DataFrame:
         # La médiane (la valeur du milieu) résiste aux pics : utile pour les groupes irréguliers
         "Médiane par jour": jours.median().values.round(2),
     })
+
+
+def family_volumes(c) -> pd.DataFrame:
+    """Poids de chaque famille thérapeutique (anti-inflammatoires, antalgiques...) sur toute la période.
+
+    Les groupes sont rangés dans leur famille par leur code ATC (atc.famille) : un code ajouté
+    plus tard à config.GROUPS entre automatiquement dans le total de sa famille.
+    """
+    jours = c.daily[G]
+    totaux = atc.par_famille(jours).sum()
+    groupes = atc.table_des_groupes(G).groupby("Famille")["Groupe"].apply(", ".join)
+    return pd.DataFrame({
+        "Famille": totaux.index,
+        "Groupes": [groupes[f] for f in totaux.index],
+        "Total période": totaux.values.round(1),
+        "Part du volume": (totaux / totaux.sum()).values.round(4),
+        "Moyenne par jour": (totaux / len(jours)).values.round(2),
+    }).sort_values("Total période", ascending=False).reset_index(drop=True)
 
 
 def annees_completes(c) -> pd.DataFrame:
