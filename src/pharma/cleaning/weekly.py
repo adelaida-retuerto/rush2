@@ -1,120 +1,97 @@
-"""Nettoyage de l'export hebdomadaire (Pharma_Ventes_Weekly.csv).
+"""Nettoyage de l'export hebdomadaire (Pharma_Ventes_Weekly.csv).   [Ihman]
 
-Ce fichier ne contient que ce qui est propre à l'hebdomadaire.
-Les contrôles communs aux 4 exports (valeurs manquantes, négatives,
-doublons) sont dans checks.py.
+Même modèle que hourly.py : contrôles communs (checks.py), puis contrôles propres
+à l'hebdomadaire, chaque résultat étant écrit dans le journal commun.
+La référence reste l'horaire : chaque semaine doit égaler la somme de ses jours.
 """
+from __future__ import annotations
+
+from dataclasses import dataclass
 
 import pandas as pd
 
+from . import checks
+from .hourly import HourlyResult
 
-def verifier_dimanches(hebdomadaire):
-    """Vérifie que chaque semaine est datée d'un dimanche (le dernier jour de la semaine).
 
-    Reçoit le tableau hebdomadaire avec la date en index (nommé datum).
-    Renvoie les semaines qui ne tombent pas un dimanche : un tableau vide si tout va bien.
-    """
+@dataclass
+class WeeklyResult:
+    weekly: pd.DataFrame                # ventes par semaine (datée du dimanche), sans doublon
+    semaine_complete: pd.Series         # True si la semaine a ses 7 jours complets
+    semaines_incompletes: pd.DataFrame  # semaines de moins de 7 jours complets, avec leur nombre
+    ecarts: pd.DataFrame                # cases qui ne concordent pas avec l'horaire (vide si tout va bien)
+
+
+def verifier_dimanches(hebdomadaire: pd.DataFrame) -> pd.DataFrame:
+    """Renvoie les semaines qui ne sont pas datées d'un dimanche : un tableau vide si tout va bien."""
     # dayofweek numérote les jours de 0 (lundi) à 6 (dimanche)
     pas_dimanche = hebdomadaire.index.dayofweek != 6
     return hebdomadaire[pas_dimanche]
 
 
-def verifier_ecarts(hebdomadaire):
-    """Vérifie qu'il y a exactement 7 jours entre deux semaines qui se suivent.
+def verifier_ecarts(hebdomadaire: pd.DataFrame) -> pd.DataFrame:
+    """Renvoie les semaines dont l'écart avec la précédente n'est pas de 7 jours, avec cet écart.
 
-    Un écart plus grand veut dire qu'une semaine manque dans l'export ;
-    plus petit, que deux lignes se chevauchent.
-    Renvoie les semaines dont l'écart avec la précédente n'est pas de 7 jours,
-    avec cet écart en jours : un tableau vide si tout va bien.
+    Plus de 7 jours : une semaine manque. Moins : deux lignes se chevauchent.
     """
     dates = hebdomadaire.index.to_series()
     # diff() calcule, pour chaque date, le temps écoulé depuis la date précédente
     ecarts_en_jours = dates.diff().dt.days
-
     # La première semaine n'a pas de précédente (écart vide) : on ne la compte pas
     anormal = ecarts_en_jours.notna() & (ecarts_en_jours != 7)
     return ecarts_en_jours[anormal].to_frame("ecart_en_jours")
 
 
-def comparer_au_journalier(hebdomadaire, ventes_journalieres):
-    """Compare l'export hebdomadaire à la somme des jours de chaque semaine.
+def clean_weekly(export: pd.DataFrame, derived: pd.DataFrame, rows: list,
+                 horaire: HourlyResult) -> WeeklyResult:
+    """Contrôle l'export hebdomadaire et écrit chaque résultat dans le journal (rows).
 
-    ventes_journalieres : le tableau propre renvoyé par nettoyer_journalier (daily.py).
-    Renvoie une ligne par case qui ne concorde pas (semaine, groupe, écart, les deux valeurs) :
-    un tableau vide si tout concorde.
+    export   : ventes lues par loading.load_export("weekly")
+    derived  : colonnes ajoutées par le logiciel (aucune pour l'hebdomadaire, le contrôle passe alors)
+    horaire  : résultat de hourly.clean_hourly, qui sert de référence
     """
-    # On additionne les jours par semaine finissant le dimanche (W-SUN = Week, SUNday)
-    somme_des_jours = ventes_journalieres.resample("W-SUN").sum()
+    # Contrôles communs : périmètre, doublons, manquants, négatifs, colonnes dérivées
+    checks.scope(rows, "weekly", export)
+    hebdomadaire = checks.duplicates_and_negatives(rows, "weekly", export)
+    checks.derived_columns(rows, "weekly", derived)
 
-    # Différence case par case, arrondie au centième ; en dessous de 0,01 ce sont des arrondis
-    ecarts = (hebdomadaire - somme_des_jours).round(2)
-    faux = ecarts.abs() > 0.01
+    # Contrôles propres à l'hebdomadaire : dates des semaines
+    pas_dimanche = verifier_dimanches(hebdomadaire)
+    checks.log(rows, "Semaines datées d'un dimanche", "weekly", len(pas_dimanche) == 0,
+               f"{len(pas_dimanche)} semaine(s) ne finissant pas un dimanche",
+               "Aucune action" if len(pas_dimanche) == 0 else "Découpage des semaines à faire confirmer par le client")
 
-    # On met les cases fausses en liste : une ligne par (semaine, groupe)
-    # dropna() est nécessaire avec pandas 3 : stack() garde sinon les cases vides
-    liste = ecarts[faux].stack().dropna().reset_index()
-    liste.columns = ["semaine", "groupe", "ecart"]
-    liste["hebdomadaire_client"] = [hebdomadaire.loc[s, g] for s, g in zip(liste["semaine"], liste["groupe"])]
-    liste["somme_des_jours"] = [somme_des_jours.loc[s, g] for s, g in zip(liste["semaine"], liste["groupe"])]
-    return liste
+    ecarts_dates = verifier_ecarts(hebdomadaire)
+    checks.log(rows, "7 jours entre deux semaines", "weekly", len(ecarts_dates) == 0,
+               f"{len(ecarts_dates)} écart(s) différent(s) de 7 jours",
+               "Aucune action" if len(ecarts_dates) == 0 else "Semaines manquantes : recalculées depuis l'horaire")
 
+    # Réconciliation : on additionne les jours de l'horaire par semaine finissant le dimanche (W-SUN)
+    semaines_recalculees = horaire.daily_all.resample("W-SUN").sum()
+    ecarts = checks.compare(hebdomadaire, semaines_recalculees, "weekly", "%d/%m/%Y")
+    checks.log_reconciliation(rows, "weekly", hebdomadaire, ecarts)
 
-def reperer_semaines_incompletes(ventes_journalieres):
-    """Repère les semaines qui ont moins de 7 jours de données.
+    # Semaines incomplètes : moins de 7 jours complets selon l'horaire (complete_day)
+    jours_complets = horaire.complete_day.resample("W-SUN").sum()
+    semaine_complete = jours_complets == 7
+    incompletes = jours_complets[~semaine_complete].to_frame("jours_complets")
+    detail = ", ".join(f"semaine au {s:%d/%m/%Y} ({n} jour(s))" for s, n in incompletes["jours_complets"].items())
+    checks.log(rows, "Semaines incomplètes", "weekly", len(incompletes) == 0,
+               detail or "Toutes les semaines sont complètes",
+               "Signalées, exclues des statistiques hebdomadaires")
 
-    En pratique : la première semaine (les données ne commencent pas un lundi)
-    et la dernière (l'export s'arrête en cours de semaine).
-    Renvoie ces semaines avec leur nombre de jours : un tableau vide si toutes sont complètes.
-    """
-    # size() compte le nombre de jours présents dans chaque semaine
-    jours_par_semaine = ventes_journalieres.resample("W-SUN").size()
-    incompletes = jours_par_semaine < 7
-    return jours_par_semaine[incompletes].to_frame("nombre_de_jours")
-
-
-def nettoyer_hebdomadaire(hebdomadaire, ventes_journalieres):
-    """Enchaîne les 4 contrôles : la seule fonction à appeler depuis run.py.
-
-    Reçoit l'hebdomadaire chargé (date en index, nommée datum)
-    et les ventes journalières propres renvoyées par nettoyer_journalier.
-    Renvoie deux choses :
-    - ventes : une ligne par semaine, les 8 groupes ATC en colonnes ;
-    - rapport : ce qui a été trouvé, pour l'état des données.
-    Les semaines incomplètes sont signalées, pas retirées : c'est à l'analyse de décider.
-    """
-    rapport = {
-        "semaines_pas_dimanche": verifier_dimanches(hebdomadaire),
-        "ecarts_anormaux": verifier_ecarts(hebdomadaire),
-        "ecarts_avec_journalier": comparer_au_journalier(hebdomadaire, ventes_journalieres),
-        "semaines_incompletes": reperer_semaines_incompletes(ventes_journalieres),
-    }
-    # L'export hebdomadaire ne contient que les ventes : rien à retirer
-    return hebdomadaire, rapport
+    return WeeklyResult(weekly=hebdomadaire, semaine_complete=semaine_complete,
+                        semaines_incompletes=incompletes, ecarts=ecarts)
 
 
-# Ce bloc ne s'exécute que si on lance ce fichier directement, pour tester.
-# Provisoire : en attendant loading.py (socle), on lit le fichier nous-mêmes.
+# Test : depuis le dossier src, lancer   python -m pharma.cleaning.weekly
 if __name__ == "__main__":
-    from pathlib import Path
+    from . import hourly, loading
 
-    racine = Path(__file__).resolve().parents[3]  # weekly.py → cleaning → pharma → src → racine
-    hebdomadaire = pd.read_csv(racine / "data" / "raw" / "Pharma_Ventes_Weekly.csv")
-    hebdomadaire["datum"] = pd.to_datetime(hebdomadaire["datum"], format="%m/%d/%Y")
-    hebdomadaire = hebdomadaire.set_index("datum")
+    journal = []
+    horaire = hourly.clean_hourly(loading.load_export("hourly"), loading.load_derived_columns("hourly"), journal)
+    resultat = clean_weekly(loading.load_export("weekly"), loading.load_derived_columns("weekly"), journal, horaire)
 
-    # Les ventes journalières propres, obtenues avec daily.py
-    from daily import nettoyer_journalier
-
-    journalier = pd.read_csv(racine / "data" / "raw" / "Pharma_Ventes_Daily.csv")
-    journalier["datum"] = pd.to_datetime(journalier["datum"], format="%m/%d/%Y")
-    journalier = journalier.set_index("datum")
-    ventes_journalieres, _ = nettoyer_journalier(journalier)
-
-    ventes, rapport = nettoyer_hebdomadaire(hebdomadaire, ventes_journalieres)
-
-    print("Semaines :", len(ventes))
-    print("Semaines qui ne finissent pas un dimanche :", len(rapport["semaines_pas_dimanche"]))
-    print("Écarts différents de 7 jours :", len(rapport["ecarts_anormaux"]))
-    print("Cases qui ne concordent pas avec le journalier :", len(rapport["ecarts_avec_journalier"]))
-    print("Semaines incomplètes :", len(rapport["semaines_incompletes"]))
-    print(rapport["semaines_incompletes"])
+    # On n'affiche que les lignes du journal qui concernent l'hebdomadaire
+    lignes_weekly = pd.DataFrame(journal)
+    print(lignes_weekly[lignes_weekly["Export"] == "weekly"][["Contrôle", "Statut", "Détail"]].to_string(index=False))
