@@ -73,6 +73,14 @@ def test_group_volumes_parts(c):
     assert v.loc["N02BE", "Moyenne par jour"] == 10
 
 
+def test_family_volumes(c):
+    f = descriptive.family_volumes(c).set_index("Famille")
+    assert set(f.index) == {"Anti-inflammatoires", "Antalgiques", "Psycholeptiques", "Respiratoire"}
+    assert f.loc["Antalgiques", "Groupes"] == "N02BA, N02BE"
+    assert f.loc["Antalgiques", "Moyenne par jour"] == 12          # aspirine 2 + paracétamol 10
+    assert f["Part du volume"].sum() == pytest.approx(1, abs=0.001)
+
+
 def test_seasonality_retrouve_janvier_et_mai(c):
     s = descriptive.seasonality_index(c).set_index("Mois")
     assert len(s) == 12

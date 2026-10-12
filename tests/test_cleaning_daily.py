@@ -89,6 +89,17 @@ def test_ecart_avec_horaire_detecte():
     assert ecarts.iloc[0]["Écart"] == 12
 
 
+def test_nouveau_code_atc_signale_avec_sa_famille():
+    """Une colonne M01AC ajoutée par le logiciel de caisse est signalée, rangée dans les anti-inflammatoires."""
+    export, derived, daily_all, complete_day = donnees_journalieres()
+    derived["M01AC"] = 1.0
+    journal = []
+    clean_daily(export, derived, daily_all, complete_day, journal)
+    ligne = [l for l in journal if l["Contrôle"] == "Nouveaux codes ATC dans l'export"][0]
+    assert ligne["Statut"] == "ANOMALIE"
+    assert "M01AC (Anti-inflammatoires)" in ligne["Détail"]
+
+
 def test_vrais_exports():
     """Sur les exports du client : 2105 jours complets, aucun écart avec l'horaire."""
     from pharma.cleaning import hourly, loading
