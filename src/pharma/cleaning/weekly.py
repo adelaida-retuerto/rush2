@@ -1,25 +1,18 @@
 """Nettoyage de l'export hebdomadaire (Pharma_Ventes_Weekly.csv).   [Ihman]
 
-Même modèle que hourly.py : contrôles communs (checks.py), puis contrôles propres
-à l'hebdomadaire, chaque résultat étant écrit dans le journal commun.
-La référence reste l'horaire : chaque semaine doit égaler la somme de ses jours.
+Contrat (docs/data_contract.md) :
+    clean_weekly(export, derived, daily_all, complete_day, rows) -> (weekly, ecarts)
+
+L'horaire est la référence : l'export hebdomadaire sert de contrôle. Les ventes renvoyées
+sont les semaines COMPLÈTES (lundi -> dimanche, datées du dimanche) recalculées depuis
+l'horaire. Chaque contrôle écrit sa ligne dans le journal commun (rows).
 """
 from __future__ import annotations
-
-from dataclasses import dataclass
 
 import pandas as pd
 
 from . import checks
-from .hourly import HourlyResult
-
-
-@dataclass
-class WeeklyResult:
-    weekly: pd.DataFrame                # ventes par semaine (datée du dimanche), sans doublon
-    semaine_complete: pd.Series         # True si la semaine a ses 7 jours complets
-    semaines_incompletes: pd.DataFrame  # semaines de moins de 7 jours complets, avec leur nombre
-    ecarts: pd.DataFrame                # cases qui ne concordent pas avec l'horaire (vide si tout va bien)
+from .checks import G
 
 
 def verifier_dimanches(hebdomadaire: pd.DataFrame) -> pd.DataFrame:
@@ -42,46 +35,51 @@ def verifier_ecarts(hebdomadaire: pd.DataFrame) -> pd.DataFrame:
     return ecarts_en_jours[anormal].to_frame("ecart_en_jours")
 
 
-def clean_weekly(export: pd.DataFrame, derived: pd.DataFrame, rows: list,
-                 horaire: HourlyResult) -> WeeklyResult:
-    """Contrôle l'export hebdomadaire et écrit chaque résultat dans le journal (rows).
+def clean_weekly(export: pd.DataFrame, derived: pd.DataFrame | None, daily_all: pd.DataFrame,
+                 complete_day: pd.Series, rows: list) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Contrôle l'export hebdomadaire et renvoie (semaines complètes recalculées depuis l'horaire, écarts).
 
-    export   : ventes lues par loading.load_export("weekly")
-    derived  : colonnes ajoutées par le logiciel (aucune pour l'hebdomadaire, le contrôle passe alors)
-    horaire  : résultat de hourly.clean_hourly, qui sert de référence
+    export       : ventes lues par loading.load_export("weekly")
+    derived      : colonnes ajoutées par le logiciel (aucune pour l'hebdomadaire)
+    daily_all    : ventes par jour recalculées depuis l'horaire (tous les jours)
+    complete_day : True si le jour est complet selon l'horaire
+    rows         : le journal commun, où chaque contrôle ajoute sa ligne
     """
-    # Contrôles communs : périmètre, doublons, manquants, négatifs, colonnes dérivées
+    # Contrôles 1 à 4 : périmètre, doublons, manquants, négatifs
     checks.scope(rows, "weekly", export)
     hebdomadaire = checks.duplicates_and_negatives(rows, "weekly", export)
-    checks.derived_columns(rows, "weekly", derived)
 
-    # Contrôles propres à l'hebdomadaire : dates des semaines
+    # Contrôle propre à l'hebdomadaire : chaque semaine est datée de son dernier jour, le dimanche
     pas_dimanche = verifier_dimanches(hebdomadaire)
     checks.log(rows, "Semaines datées d'un dimanche", "weekly", len(pas_dimanche) == 0,
                f"{len(pas_dimanche)} semaine(s) ne finissant pas un dimanche",
-               "Aucune action" if len(pas_dimanche) == 0 else "Découpage des semaines à faire confirmer par le client")
+               "Aucune action" if len(pas_dimanche) == 0 else "Semaines recalculées depuis l'horaire")
 
+    # Contrôle 5 : aucune semaine ne doit manquer (7 jours entre deux semaines)
     ecarts_dates = verifier_ecarts(hebdomadaire)
-    checks.log(rows, "7 jours entre deux semaines", "weekly", len(ecarts_dates) == 0,
+    checks.log(rows, "Semaines manquantes dans la suite", "weekly", len(ecarts_dates) == 0,
                f"{len(ecarts_dates)} écart(s) différent(s) de 7 jours",
-               "Aucune action" if len(ecarts_dates) == 0 else "Semaines manquantes : recalculées depuis l'horaire")
+               "Aucune action" if len(ecarts_dates) == 0 else "Semaines recalculées depuis l'horaire")
 
-    # Réconciliation : on additionne les jours de l'horaire par semaine finissant le dimanche (W-SUN)
-    semaines_recalculees = horaire.daily_all.resample("W-SUN").sum()
+    # Contrôle 6 : colonnes dérivées (aucune dans l'hebdomadaire : rien n'est écrit)
+    checks.derived_columns(rows, "weekly", derived)
+
+    # Contrôle 9 : on additionne les jours de l'horaire par semaine finissant le dimanche (W-SUN)
+    semaines_recalculees = daily_all.resample("W-SUN").sum()
     ecarts = checks.compare(hebdomadaire, semaines_recalculees, "weekly", "%d/%m/%Y")
     checks.log_reconciliation(rows, "weekly", hebdomadaire, ecarts)
 
-    # Semaines incomplètes : moins de 7 jours complets selon l'horaire (complete_day)
-    jours_complets = horaire.complete_day.resample("W-SUN").sum()
+    # Contrôle 7 : une semaine est complète si ses 7 jours sont complets selon l'horaire
+    jours_complets = complete_day.resample("W-SUN").sum()
     semaine_complete = jours_complets == 7
-    incompletes = jours_complets[~semaine_complete].to_frame("jours_complets")
-    detail = ", ".join(f"semaine au {s:%d/%m/%Y} ({n} jour(s))" for s, n in incompletes["jours_complets"].items())
-    checks.log(rows, "Semaines incomplètes", "weekly", len(incompletes) == 0,
-               detail or "Toutes les semaines sont complètes",
-               "Signalées, exclues des statistiques hebdomadaires")
+    incompletes = jours_complets[~semaine_complete]
+    checks.log(rows, "Semaines incomplètes exclues", "weekly", len(incompletes) == 0,
+               ", ".join(f"semaine au {s:%d/%m/%Y} ({n} jour(s) complet(s))" for s, n in incompletes.items()) or "Aucune",
+               "Exclues des statistiques hebdomadaires" if len(incompletes) else "Aucune action")
 
-    return WeeklyResult(weekly=hebdomadaire, semaine_complete=semaine_complete,
-                        semaines_incompletes=incompletes, ecarts=ecarts)
+    # Ventes propres : les semaines complètes, recalculées depuis l'horaire
+    weekly = semaines_recalculees.loc[semaine_complete[semaine_complete].index, G]
+    return weekly, ecarts
 
 
 # Test : depuis le dossier src, lancer   python -m pharma.cleaning.weekly
@@ -90,8 +88,10 @@ if __name__ == "__main__":
 
     journal = []
     horaire = hourly.clean_hourly(loading.load_export("hourly"), loading.load_derived_columns("hourly"), journal)
-    resultat = clean_weekly(loading.load_export("weekly"), loading.load_derived_columns("weekly"), journal, horaire)
+    weekly, ecarts = clean_weekly(loading.load_export("weekly"), loading.load_derived_columns("weekly"),
+                                  horaire.daily_all, horaire.complete_day, journal)
 
     # On n'affiche que les lignes du journal qui concernent l'hebdomadaire
-    lignes_weekly = pd.DataFrame(journal)
-    print(lignes_weekly[lignes_weekly["Export"] == "weekly"][["Contrôle", "Statut", "Détail"]].to_string(index=False))
+    lignes = pd.DataFrame(journal)
+    print(lignes[lignes["Export"] == "weekly"][["Contrôle", "Statut", "Détail"]].to_string(index=False))
+    print(f"\nVentes propres : {len(weekly)} semaines complètes, du {weekly.index.min():%d/%m/%Y} au {weekly.index.max():%d/%m/%Y}")
