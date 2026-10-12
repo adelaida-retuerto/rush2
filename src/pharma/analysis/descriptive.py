@@ -108,7 +108,8 @@ def monthly_table(c) -> pd.DataFrame:
     """Ventes mois par mois (mois complets), par groupe, avec le total."""
     mois = c.monthly[G].round(1)
     mois["Total"] = mois[G].sum(axis=1).round(1)
-    mois.insert(0, "Mois", mois.index.strftime("%Y-%m"))  # texte « 2019-09 », comme le contrat
+    # Une vraie date (1er jour du mois) : le modèle l'affiche « 09/2019 » et le graphique s'en sert
+    mois.insert(0, "Mois", mois.index.to_period("M").to_timestamp())
     return mois.reset_index(drop=True)
 
 
