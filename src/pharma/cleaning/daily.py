@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import pandas as pd
 
+from .. import atc
 from . import checks
 from .checks import G
 
@@ -28,6 +29,20 @@ def reperer_jours_incomplets(derived: pd.DataFrame) -> pd.DataFrame:
     """
     incomplets = derived["Hour"] != HOUR_JOUR_COMPLET
     return derived.loc[incomplets, ["Hour"]]
+
+
+def signaler_codes_non_suivis(rows: list, niveau: str, derived: pd.DataFrame | None) -> None:
+    """Écrit dans le journal les colonnes de l'export qui sont des codes ATC non suivis, avec leur famille.
+
+    loading.py ne garde que les 8 groupes de config.GROUPS : une colonne en plus (nouveau code ATC
+    ajouté par le logiciel de caisse) arrive dans les colonnes « dérivées ». On la signale pour
+    qu'elle soit ajoutée à config.GROUPS (et au modèle Excel) au lieu de passer inaperçue.
+    """
+    colonnes = [] if derived is None else list(derived.columns)
+    nouveaux = atc.codes_non_suivis(colonnes)
+    checks.log(rows, "Nouveaux codes ATC dans l'export", niveau, len(nouveaux) == 0,
+               ", ".join(f"{code} ({atc.famille(code)})" for code in nouveaux) or "Aucun : les 8 groupes suivis",
+               "Aucune action" if not nouveaux else "À ajouter dans config.GROUPS et le modèle Excel pour les analyser")
 
 
 def clean_daily(export: pd.DataFrame, derived: pd.DataFrame | None, daily_all: pd.DataFrame,
@@ -53,6 +68,9 @@ def clean_daily(export: pd.DataFrame, derived: pd.DataFrame | None, daily_all: p
 
     # Contrôle 6 : Year, Month, Weekday Name cohérents avec la date
     checks.derived_columns(rows, "daily", derived)
+
+    # Nouveau code ATC dans l'export ? (colonnes hors des 8 groupes suivis, rangées dans leur famille)
+    signaler_codes_non_suivis(rows, "daily", derived)
 
     # Contrôle propre au journalier : la colonne Hour révèle les jours incomplets
     if derived is not None and "Hour" in derived:
