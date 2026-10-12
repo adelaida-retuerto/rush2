@@ -14,3 +14,14 @@ rush-2.zip
 rush2-pharma_sales.pdf
 rush2-kick_off.pptx
 Charte_graphique_Rush2.pdf
+
+# Environnement Python personnel
+.venv314/
+
+# Données et rapports générés
+data/processed/
+reports/
+output/
+
+# Explorations personnelles
+brouillons/

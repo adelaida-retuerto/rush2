@@ -6,7 +6,7 @@ racine = Path(__file__).resolve().parents[3]
 
 # Charger les ventes mensuelles nettoyées
 ventes = pd.read_csv(
-    racine / "output" / "ventes_mensuelles_propres.csv",
+racine / "data" / "processed" / "ventes_mensuelles_propres.csv",
     parse_dates=["Date"]
 ).set_index("Date").sort_index()
 
@@ -262,7 +262,7 @@ prevision_finale["Borne haute indicative"] = (
 
 print("\nPrévisions avec fourchettes indicatives :")
 print(prevision_finale.to_string(index=False, float_format="%.2f"))
-dossier_sortie = racine / "output"
+dossier_sortie = racine / "reports"
 dossier_sortie.mkdir(parents=True, exist_ok=True)
 
 prevision_finale.to_csv(

@@ -2,7 +2,8 @@ from pathlib import Path
 import pandas as pd
 
 # Retrouver le dossier du projet depuis ce script
-racine = Path(__file__).resolve().parent.parent
+racine =racine = Path(__file__).resolve().parents[3]
+Path(__file__).resolve().parent.parent
 
 # Lire le CSV brut sans le modifier
 chemin = racine / "data" / "raw" / "Pharma_Ventes_Monthly.csv"
@@ -201,8 +202,11 @@ pics_signales = pd.DataFrame(
 print("\nDétail des pics signalés :")
 print(pics_signales.round(3).to_string(index=False))
 # Créer le dossier des résultats si nécessaire
-dossier_sortie = racine / "output"
+dossier_sortie = racine / "data" / "processed"
 dossier_sortie.mkdir(parents=True, exist_ok=True)
+
+dossier_rapports = racine / "reports"
+dossier_rapports.mkdir(parents=True, exist_ok=True)
 
 # Préparer les données : Date puis les huit groupes ATC
 table_propre = mensuel_propre.copy()
