@@ -196,7 +196,7 @@ def demand_regularity(c):
         ).values,
         "P95 par jour": ventes_jour.quantile(0.95).values,
         "Max par jour": ventes_jour.max().values,
-        "Partde jours sans vente": (
+        "Part de jours sans vente": (
             ventes_jour.eq(0).mean()
         ).values
     })
@@ -255,7 +255,7 @@ def business_value(bilan):
             "Verdict : prévisible ?": verdict,
             "Méthode recommandée": methode,
             "Erreur évitée par le modèle (unités/mois)": gain,
-                       "Équivalent en jours devente": (
+                       "Équivalent en jours de vente": (
                 gain / resultat["Moyenne par jour sur validation"]
                 if resultat["Moyenne par jour sur validation"] > 0
                 else None
