@@ -28,3 +28,6 @@ output/
 
 # Explorations personnelles
 brouillons/
+
+# Contexte personnel pour l'assistant de code (inutile au client et au manager)
+CLAUDE.md
