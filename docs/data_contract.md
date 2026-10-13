@@ -69,7 +69,7 @@ modifiée hors de ces zones bloque la livraison (`src/pharma/workbook/verify.py`
 
 | Bloc | Module (`src/pharma/workbook/`) | Tableaux Excel | Cellules nommées |
 | --- | --- | --- | --- |
-| forecast · Jeanne | `sheets_summary.py` | T_Messages, T_Chiffres_Cles, T_Verdict, T_Besoins, T_Criteres, T_Limites, T_Decisions, T_Risques, T_Prevision, T_Valeur, T_Regularite, T_Backtest, T_Detail_Backtest | txt_sous_titre, txt_prevision_note |
+| forecast · Jeanne | `sheets_summary.py` | T_Verdict, T_Prevision, T_Valeur, T_Regularite, T_Backtest, T_Detail_Backtest | txt_sous_titre, txt_prevision_note ; cartes de la Synthèse : kpi_1..6_{valeur, libelle}, retenir_1..6_{theme, chiffre, texte}, reco_1..5_{cible, texte}, limite_1..6_{limite, consequence, levee} |
 | sales · Iman | `sheets_tool.py` | T_Jour, T_Heure | periode_debut, periode_fin, note_outil |
 | sales · Iman | `sheets_sales.py` | T_Groupes, T_Saisonnalite, T_Mois_Forts, T_Cumul, T_Annees, T_Mensuel, T_Grille_Liens, T_Grippe_Effet, T_Grippe_Serie | txt_cumul_titre, txt_grippe_source, txt_grippe_note |
 | data · Adelaida | `sheets_data.py` | T_Sources, T_Journal, T_Ecarts, T_Pics, T_Jours, T_Heures, T_Affluence, T_Petits_Comptages, T_Conformite | txt_run_info |

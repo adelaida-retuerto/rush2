@@ -31,8 +31,8 @@ def main() -> None:
     print(f"\nClasseur du mois : {res.workbook}")
     print(f"Contrôles du classeur : {len(res.checks.checks)} vérifications, toutes conformes au modèle.")
     print(f"Dernier mois complet : {res.clean.last_complete_month:%m/%Y}\n")
-    for _, m in res.tables["messages"].iterrows():
-        print(f" - {m['Thème']} : {m['Message']}")
+    for _, m in res.tables["insights"].iterrows():  # les cartes « Ce qu'il faut retenir » de la Synthèse
+        print(f" - {m['Thème'].capitalize()} : {m['Chiffre']} {m['Message']}")
 
 
 if __name__ == "__main__":

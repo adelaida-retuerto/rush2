@@ -105,3 +105,12 @@ def guess_format(entete: str) -> str:
             "mois le plus", "mois prévu", "lien significatif", "sensible", "référence naïve")):
         return FMT_GENERAL
     return FMT_QTY  # par défaut : une quantité vendue
+
+
+# --- Ajouts pour dessiner les feuilles dans le modèle (build de sheets_tool et sheets_sales) ----
+BOLD = Font(name=POLICE_TEXTE, size=10, bold=True, color=ENCRE)       # libellés en gras
+SAISIE = "FFF2CC"                                                      # cellules que le pharmacien remplit
+INPUT_FILL = PatternFill(fill_type="solid", start_color=SAISIE, end_color=SAISIE)
+LIGHT_FILL = PatternFill(fill_type="solid", start_color=BRUME, end_color=BRUME)  # lignes de total
+FMT_MONTH = "mm/yyyy"                                                  # mois (graphique mensuel)
+PALETTE = [COULEURS_ATC[g] for g in COULEURS_ATC]                      # une couleur par groupe, dans l'ordre ATC
