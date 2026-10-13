@@ -70,11 +70,6 @@ OUTLIER_WINDOW_DAYS = 29         # fenêtre glissante (jours) pour la médiane r
 OUTLIER_Z = 6.0                  # seuil de z-score robuste pour signaler un pic
 OUTLIER_MIN_QTY = 10             # on ne signale pas un « pic » sous ce volume journalier
 
-# --- Prévision -----------------------------------------------------------------------------
-BACKTEST_MONTHS = 24             # nb de mois testés en origine glissante
-MIN_TRAIN_MONTHS = 36            # historique minimal pour entraîner un modèle
-SKILL_THRESHOLD = 0.10           # gain minimal (10 %) sur la meilleure référence naïve
-
 # --- Donnée externe : Réseau Sentinelles, syndromes grippaux, France ------------------------
 SENTIWEB_URL = "https://www.sentiweb.fr/datasets/all/inc-3-PAY.csv"
 SENTIWEB_CACHE = EXTERNAL_DIR / "sentiweb_syndromes_grippaux_france.csv"

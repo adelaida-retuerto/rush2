@@ -23,13 +23,6 @@ Tant que chacune respecte ce contrat, les trois blocs s'emboîtent sans que pers
 
 Socle commun, créé au lancement : `loading.py` (lecture des exports) et `checks.py` (les contrôles partagés).
 
-Pour travailler sans attendre le nettoyage de l'horaire :
-
-```python
-from pharma.cleaning import checks, loading
-daily_all, complete_day = checks.reference_daily(loading.load_export("hourly"))
-```
-
 ### Les 9 contrôles, identiques pour les 4 exports
 
 1. Périmètre (nombre de lignes, première et dernière date)

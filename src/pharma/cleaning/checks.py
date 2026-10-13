@@ -23,16 +23,6 @@ def log(rows: list, check: str, export: str, ok: bool, detail: str, decision: st
                  "Détail": detail, "Décision": decision})
 
 
-def reference_daily(hourly: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
-    """Ventes journalières recalculées depuis l'horaire brut, tous les jours comptés complets.
-
-    Sert à travailler seule : chacune peut comparer son export à l'horaire sans attendre
-    le nettoyage complet de l'horaire (cleaning/hourly.py), qui affine ensuite les jours complets.
-    """
-    daily_all = hourly[G].resample("D").sum()
-    return daily_all, pd.Series(True, index=daily_all.index)
-
-
 def scope(rows: list, level: str, df: pd.DataFrame) -> None:
     """Contrôle 1 : périmètre (nombre de lignes, première et dernière date)."""
     log(rows, "Périmètre", level, True,
