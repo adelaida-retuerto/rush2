@@ -2,7 +2,8 @@
 
 Tout est recalculé à chaque mise à jour à partir des tables des trois flux (t) : aucune phrase
 chiffrée n'est écrite à la main. Les tailles (6 chiffres clés, 6 insights, 5 recommandations,
-6 limites) correspondent aux cartes du modèle (workbook/sheets_summary.py).
+9 limites) correspondent aux cartes du modèle (workbook/sheets_summary.py).
+Le verdict de prévision (verdict_table) et les limites de la prévision sont ceux de Jeanne.
 """
 from __future__ import annotations
 
@@ -94,6 +95,7 @@ def insights(c, t) -> pd.DataFrame:
     top_grippe = hausses.index[0]
     attrs = t["flu_effect"].attrs
     prevus = _groupes_prevus(t)
+    bilan = t["fc_summary"]  # bilan de validation de Jeanne, indexé par groupe
     ecarts = c.discrepancies
     n_ecarts_controle = int(ecarts["Export"].isin(["daily", "weekly"]).sum()) if len(ecarts) else 0
     amplitude = pics["Amplitude max sur min"].astype(float)
@@ -122,8 +124,10 @@ def insights(c, t) -> pd.DataFrame:
          f"non prouvé : {attrs.get('n_hivers', '?')} hivers observés."],
         ["PRÉVISION",
          f"{len(prevus)} / {len(G)}",
-         f"groupes où un modèle fait mieux qu'une règle simple sur 12 mois jamais vus ({_liste(prevus)}), "
-         "utilité à confirmer. Pour les autres, une règle simple (mois précédent, moyenne 3 mois) suffit."],
+         f"groupes où un modèle fait mieux qu'une règle simple sur {bilan.attrs['n_test']} mois de validation "
+         f"({_liste(prevus)}). N02BE : erreur réduite de {_nombre(bilan.loc['N02BE', 'Gain (%)'], 1)} % ; "
+         f"R06 : erreur relative de {_nombre(bilan.loc['R06', 'Erreur relative (%)'], 1)} % ; "
+         "R03 : repli vers la référence. Analyse exploratoire."],
     ]
     return pd.DataFrame(lignes, columns=["Thème", "Chiffre", "Message"])
 
@@ -167,7 +171,7 @@ def recommendations(c, t) -> pd.DataFrame:
         ["Piloter sur des chiffres fiables",
          f"Commander à partir des ventes recalculées, jamais de l'export mensuel ({t['n_bad_months']} mois sur "
          f"{t['n_monthly_rows']} surestimés). Prévision par modèle pour {_liste(prevus)} ; règle simple pour les "
-         f"{autres} autres groupes."],
+         f"{autres} autres groupes ; comparer chaque mois les prévisions aux ventes réelles."],
     ], columns=["Axe", "Recommandation"])
 
 
@@ -184,30 +188,54 @@ def key_message(c, t) -> str:
             "le levier est d'anticiper le stock, et l'export détaillé ne doit pas sortir de la pharmacie.")
 
 
-# --- 4. Limites (6 lignes) ----------------------------------------------------------------------------
+# --- 4. Limites (9 lignes : celles de Jeanne sur la prévision + deux limites générales) --------------
 def limits(c) -> pd.DataFrame:
+    n_mois = len(c.monthly)
     return pd.DataFrame([
-        ["Unité des quantités non documentée", "On parle de quantités, jamais de boîtes",
-         "Demander l'unité à l'éditeur du logiciel"],
-        ["Aucun prix", "Aucune conclusion en euros : la valeur de la prévision est chiffrée en jours de vente",
-         "Obtenir les prix d'achat (mission de suivi)"],
+        ["Unité des quantités non documentée ; aucun prix", "Pas de conversion en boîtes, euros ou marge",
+         "Obtenir le dictionnaire des données du logiciel"],
+        [f"Historique de {n_mois} mois complets", "Résultats propres à cette pharmacie et cette période",
+         "Tester sur de nouveaux exports"],
+        ["Validation sur 12 mois déjà observés en exploration",
+         "Comparaison exploratoire ; sélection possiblement influencée", "Évaluer les choix fixés sur de nouveaux mois"],
+        ["Fourchettes indicatives issues de 12 erreurs", "Aucune garantie de couverture à 80 % ou 90 %",
+         "Évaluer la couverture sur une période distincte"],
+        ["Grippe non intégrée aux modèles de prévision", "Son apport prédictif n'est pas démontré ici",
+         "Tester un signal disponible avant chaque prévision"],
+        ["Aucune donnée de stock", "Les jours de ventes équivalents ne sont pas un gain de stock",
+         "Obtenir stocks, délais et ruptures"],
+        ["Sensibilité numérique de Holt-Winters", "De faibles arrondis peuvent modifier l'ajustement ; "
+         "les données en mémoire sont la source retenue", "Conserver la même précision et tester la stabilité du modèle"],
         ["Données d'observation", "On mesure des associations (grippe, saisons) ; aucune causalité n'est démontrée",
          "Tester un changement (stock, planning) avant / après"],
-        ["Pharmacie probablement hors de France", "Ventes 7 j/7 de 7 h à 22 h, même les jours fériés : le lien avec la "
-         "grippe française reste une approximation", "Confirmer la localisation de la pharmacie"],
-        [f"{len(c.monthly)} mois d'historique", "Peu d'hivers pour juger la grippe et la prévision : les verdicts "
-         "peuvent changer", "Relancer chaque mois : les tests se refont seuls"],
-        ["Dernier jour incomplet", f"Export arrêté le {c.meta['last_day']:%d/%m/%Y} à {c.meta['last_hour']}h : "
-         f"mois en cours exclu", "Rien à faire : exclu automatiquement"],
+        ["Pharmacie probablement hors de France", "Ventes 7 j/7 de 7 h à 22 h, même les jours fériés : le lien avec "
+         "la grippe française reste une approximation", "Confirmer la localisation de la pharmacie"],
     ], columns=["Limite", "Conséquence sur les conclusions", "Comment la lever"])
 
 
-# --- 5. Verdict de prévision (tableau T_Verdict) -------------------------------------------------------
-def verdict_table(t) -> pd.DataFrame:
-    """Verdict de prévision par groupe, avec la prévision du mois suivant (8 lignes, tableau T_Verdict)."""
-    valeur = t["value"][["Groupe", "Verdict : prévisible ?", "Méthode recommandée"]]
-    bilan = t["fc_summary"].reset_index()[["Groupe", "Gain (%)", "Erreur relative (%)"]]  # Groupe est l'index
-    bilan = bilan.rename(columns={"Gain (%)": "Gain vs référence (%)"})
-    suivant = t["fc_next"][["Groupe", "Quantité prévue", "Borne basse indicative", "Borne haute indicative"]]
-    suivant = suivant.rename(columns={"Quantité prévue": "Prévision"})
-    return valeur.merge(bilan, on="Groupe").merge(suivant, on="Groupe")
+# --- 5. Verdict de prévision (tableau T_Verdict) — Jeanne -------------------------------------------
+def verdict_table(t):
+    bilan = t["fc_summary"]
+    previsions = t["fc_next"].set_index("Groupe")
+    valeur = t["value"].set_index("Groupe")
+
+    lignes = []
+
+    for groupe, resultat in bilan.iterrows():
+        lignes.append({
+            "Groupe": groupe,
+            "Meilleure référence naïve":
+                resultat["Référence choisie avant validation"],
+            "Erreur du modèle en % du niveau":
+                resultat["Erreur relative (%)"] / 100,
+            "Gain du modèle vs meilleure référence":
+                resultat["Gain (%)"] / 100,
+            "Verdict : prévisible ?":
+                valeur.loc[groupe, "Verdict : prévisible ?"],
+            "Prévision":
+                previsions.loc[groupe, "Quantité prévue"],
+            "Fourchette basse (80 %)": None,
+            "Fourchette haute (80 %)": None
+        })
+
+    return pd.DataFrame(lignes)

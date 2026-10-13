@@ -1,4 +1,4 @@
-"""Feuilles Synthèse et Prévision.   [Jeanne · Synthèse refaite par Adelaida]
+"""Feuilles Synthèse et Prévision.   [Synthèse : Adelaida · Prévision : Jeanne]
 
 La Synthèse est la page d'accueil du client : une lecture stratégique en une page.
   0. Message clé          : la situation en une phrase.
@@ -26,7 +26,7 @@ from . import tables as X
 SHEETS = ["Synthèse", "Prévision"]
 
 # --- Tailles fixes des blocs de la Synthèse (le code de summary.py produit exactement ces nombres)
-N_KPI, N_INSIGHTS, N_RECOS, N_LIMITES = 6, 6, 5, 6
+N_KPI, N_INSIGHTS, N_RECOS, N_LIMITES = 6, 6, 5, 9
 
 TABLES = ["T_Verdict", "T_Prevision", "T_Valeur", "T_Regularite", "T_Backtest", "T_Detail_Backtest"]
 NAMES = (["txt_sous_titre", "txt_prevision_note", "message_cle"]
@@ -35,25 +35,27 @@ NAMES = (["txt_sous_titre", "txt_prevision_note", "message_cle"]
          + [f"reco_{i}_{champ}" for i in range(1, N_RECOS + 1) for champ in ("axe", "texte")]
          + [f"limite_{i}_{champ}" for i in range(1, N_LIMITES + 1) for champ in ("limite", "consequence", "levee")])
 
-# Colonnes produites par analysis/forecast.py (Jeanne) et analysis/summary.verdict_table
-H_VERDICT = ["Groupe", "Verdict : prévisible ?", "Méthode recommandée", "Gain vs référence (%)",
-             "Erreur relative (%)", "Prévision", "Borne basse indicative", "Borne haute indicative"]
-H_PREVISION = ["Date", "Groupe", "Méthode", "Quantité prévue", "MAE de validation", "Marge indicative",
-               "Borne basse indicative", "Borne haute indicative"]
+# Colonnes des tableaux de prévision : celles que remplit Jeanne (verdict_table et fill_* ci-dessous)
+H_VERDICT = ["Groupe", "Meilleure référence naïve", "Erreur du modèle en % du niveau",
+             "Gain du modèle vs meilleure référence", "Verdict : prévisible ?", "Prévision",
+             "Fourchette basse (80 %)", "Fourchette haute (80 %)"]
+H_PREVISION = ["Groupe", "Mois prévu", "Méthode retenue", "Prévision", "Fourchette basse (80 %)",
+               "Fourchette haute (80 %)", "Verdict"]
 H_VALEUR = ["Groupe", "Verdict : prévisible ?", "Méthode recommandée", "Erreur évitée par le modèle (unités/mois)",
             "Équivalent en jours de vente"]
 H_REGULARITE = ["Groupe", "Libellé", "Moyenne par jour", "Écart-type par jour", "Coef. de variation",
                 "P95 par jour", "Max par jour", "Part de jours sans vente"]
-H_BACKTEST = ["Groupe", "Méthode choisie avant validation", "Référence choisie avant validation", "MAE méthode",
-              "MAE référence", "Gain (%)", "Erreur relative (%)", "Moyenne par jour sur validation"]
-H_DETAIL = ["Date", "Groupe", "Méthode", "Réel", "Prévu", "Erreur absolue"]
-TXT = {"Méthode": S.FMT_TEXT, "Méthode recommandée": S.FMT_TEXT, "Verdict : prévisible ?": S.FMT_TEXT,
-       "Méthode choisie avant validation": S.FMT_TEXT, "Référence choisie avant validation": S.FMT_TEXT}
-# Titres mal orthographiés dans forecast.py : corrigés à l'écriture (sans effet une fois corrigés à la source)
-TITRES_CORRIGES = {"Partde jours sans vente": "Part de jours sans vente",
-                   "Équivalent en jours devente": "Équivalent en jours de vente"}
-# Jeanne écrit les gains et erreurs relatives en points de pourcentage (49,9 = 49,9 %) : on les affiche tels quels
-POINTS = {"Gain (%)": S.FMT_QTY, "Erreur relative (%)": S.FMT_QTY, "Gain vs référence (%)": S.FMT_QTY}
+H_BACKTEST = ["Groupe", "Niveau moyen mensuel (période test)", "MAE Naïf (mois précédent)",
+              "MAE Naïf saisonnier (même mois N-1)", "MAE Moyenne 3 derniers mois", "MAE Lissage exponentiel saisonnier",
+              "MASE Naïf (mois précédent)", "MASE Naïf saisonnier (même mois N-1)", "MASE Moyenne 3 derniers mois",
+              "MASE Lissage exponentiel saisonnier", "Meilleure référence naïve", "Erreur du modèle en % du niveau",
+              "Gain du modèle vs meilleure référence", "Mois où le modèle fait mieux", "p-valeur (Wilcoxon unilatéral)",
+              "Verdict : prévisible ?", "Erreur évitée par le modèle (unités/mois)", "Équivalent en jours de vente",
+              "Méthode recommandée"]
+H_DETAIL = ["Groupe", "Mois testé", "Méthode", "Prévision", "Réel", "Erreur absolue"]
+TXT = {"Mois prévu": S.FMT_TEXT, "Méthode retenue": S.FMT_TEXT, "Verdict": S.FMT_TEXT,
+       "Méthode recommandée": S.FMT_TEXT, "Méthode": S.FMT_TEXT, "Mois testé": S.FMT_TEXT,
+       "Meilleure référence naïve": S.FMT_TEXT, "Verdict : prévisible ?": S.FMT_TEXT}
 
 # --- Mise en forme des cartes (charte : sapin, sauge, brume ; ambre réservé aux alertes) -------
 FOND_CARTE = PatternFill(fill_type="solid", start_color=S.BRUME, end_color=S.BRUME)
@@ -149,9 +151,9 @@ def build_synthese(wb) -> None:
     # 3. Prévision du mois suivant : verdict par groupe (tableau, texte en 12)
     _titre(ws, "B19", "Prévision du mois suivant")
     head, nxt = X.add_table(ws, "T_Verdict", 20, 2, H_VERDICT, capacity=len(config.GROUP_CODES), wrap=True,
-                            comment="Méthode choisie sur 12 mois, puis jugée sur les 12 mois suivants, jamais vus. "
-                                    "« Référence simple retenue » = une règle simple suffit. Détail : feuille Prévision.",
-                            formats={**TXT, **POINTS})
+                            comment="Méthode choisie sur 12 mois, puis jugée sur les 12 mois suivants. Fourchettes à "
+                                    "80 % laissées vides : aucune couverture démontrée. Détail : feuille Prévision.",
+                            formats=TXT)
     ws.cell(20, 2).font = NOTE_12
     for col in range(2, 2 + len(H_VERDICT)):
         ws.cell(head, col).font = ENTETE_12
@@ -159,8 +161,8 @@ def build_synthese(wb) -> None:
     ws.row_dimensions[head].height = 48
     ws.row_dimensions[head + 1].height = 34
     # Mise en évidence des groupes où un modèle fait mieux que la règle simple (verdict « Gain observé ... »)
-    zone = f"C{head + 1}:C{head + len(config.GROUP_CODES)}"
-    ws.conditional_formatting.add(zone, FormulaRule(formula=[f'LEFT($C{head + 1},4)="Gain"'],
+    zone = f"F{head + 1}:F{head + len(config.GROUP_CODES)}"
+    ws.conditional_formatting.add(zone, FormulaRule(formula=[f'LEFT($F{head + 1},4)="Gain"'],
                                                     font=Font(color=S.SAUGE, bold=True),
                                                     fill=PatternFill(fill_type="solid", start_color=S.BRUME,
                                                                      end_color=S.BRUME)))
@@ -190,29 +192,32 @@ def build_synthese(wb) -> None:
 
 
 def build_prevision(wb) -> None:
-    """Feuille Prévision : prévision du mois suivant, valeur métier, régularité, validation, détail."""
+    """Feuille Prévision (contenu de Jeanne) : prévision, valeur métier, régularité, backtest, détail."""
     ws = _sheet(wb, "Prévision", S.C_CORAL)
     X.title(ws, "Peut-on prévoir le mois suivant ?")
     X.name_cell(wb, "txt_prevision_note", ws, "B3", "", S.NOTE)
-    X.widths(ws, {"B": 12, "C": 30, "D": 30, "E": 16, "F": 16, "G": 16, "H": 16, "I": 16, "J": 16})
+    X.widths(ws, {"B": 12, "C": 30, "D": 30, "E": 16, "F": 16, "G": 16, "H": 16, "I": 16})
     head, nxt = X.add_table(ws, "T_Prevision", 5, 2, H_PREVISION, capacity=8, formats=TXT,
                             heading="Prévision du mois suivant",
-                            comment="Méthode = celle retenue pour le groupe. Bornes indicatives : prévision ± marge "
-                                    "tirée des erreurs de validation, sans garantie de couverture.")
-    head, nxt = X.add_table(ws, "T_Valeur", nxt, 2, H_VALEUR, capacity=8, formats=TXT, wrap=True,
-                            heading="Valeur pour le métier : erreur évitée par rapport à la règle simple",
-                            comment="Jours de vente = erreur évitée / vente moyenne par jour : stock de sécurité "
-                                    "économisé à risque de rupture égal. Négatif = le modèle ferait pire.")
+                            comment="Méthode recommandée après validation. Les colonnes à 80 % restent vides : "
+                                    "aucune couverture à 80 % n’a été démontrée.")
+    head, nxt = X.add_table(ws, "T_Valeur", nxt, 2, H_VALEUR, capacity=8, formats=TXT,
+                            heading="Valeur pour le métier : erreur évitée par rapport à la meilleure règle simple",
+                            comment="Réduction d’erreur divisée par les ventes quotidiennes moyennes de validation. "
+                                    "Équivalent en jours de ventes, pas économie de stock constatée. Une valeur "
+                                    "négative indique une dégradation.")
     head, nxt = X.add_table(ws, "T_Regularite", nxt, 2, H_REGULARITE, capacity=8,
                             heading="Régularité de la demande et stock de sécurité",
                             comment="Coef. de variation = écart-type / moyenne : plus il est haut, plus il faut de "
                                     "stock de sécurité. P95 = niveau dépassé 1 jour sur 20.")
-    head, nxt = X.add_table(ws, "T_Backtest", nxt, 2, H_BACKTEST, capacity=8, formats={**TXT, **POINTS},
-                            heading="Validation par groupe : la méthode choisie face à la règle simple",
-                            comment="MAE = erreur absolue moyenne (quantités par mois) sur les mois de validation. "
-                                    "Gain et erreur relative en points de pourcentage.")
+    head, nxt = X.add_table(ws, "T_Backtest", nxt, 2, H_BACKTEST, capacity=8,
+                            heading="Résultats du backtest par groupe",
+                            comment="MAE : erreur absolue moyenne en quantités par mois. MASE et p-valeurs non calculés : "
+                                    "colonnes laissées vides. Les cinq méthodes sont détaillées dans le tableau ci-dessous.",
+                            formats={**TXT, "Mois où le modèle fait mieux": S.FMT_INT,
+                                     **{h: S.FMT_QTY for h in H_BACKTEST if h.startswith("MAE")}})
     X.add_table(ws, "T_Detail_Backtest", nxt, 2, H_DETAIL, heading="Détail : chaque prévision confrontée au mois réel",
-                formats={"Date": S.FMT_DATE, "Méthode": S.FMT_TEXT})
+                formats=TXT)
 
 
 def build(wb) -> None:
@@ -238,11 +243,124 @@ def fill(wb, c, t) -> dict[str, int]:
     else:
         X.set_named(wb, "kpi_1_libelle", "En attente de l'intégration des trois flux")
     _remplir_cartes(wb, "limite", t["limits"], ["limite", "consequence", "levee"])
+    lignes = {"T_Verdict": X.fill_table(wb, "T_Verdict", t["verdict"])}
+    lignes.update(fill_prevision(wb, t))
+    lignes.update(fill_detail_backtest(wb, t))
+    lignes.update(fill_backtest(wb, t))
+    return lignes
+
+
+# ------------------------------------------------------------------ Prévision : remplissage (Jeanne)
+def fill_prevision(wb, t):
+    import pandas as pd
+
+    verdicts = t["value"].set_index("Groupe")["Verdict : prévisible ?"]
+
+    previsions = pd.DataFrame({
+        "Groupe": t["fc_next"]["Groupe"],
+        "Mois prévu": t["fc_next"]["Date"].dt.strftime("%Y-%m"),
+        "Méthode retenue": t["fc_next"]["Méthode"],
+        "Prévision": t["fc_next"]["Quantité prévue"],
+        "Fourchette basse (80 %)": None,
+        "Fourchette haute (80 %)": None,
+        "Verdict": t["fc_next"]["Groupe"].map(verdicts)
+    })
+
     return {
-        "T_Verdict": X.fill_table(wb, "T_Verdict", t["verdict"]),
-        "T_Prevision": X.fill_table(wb, "T_Prevision", t["fc_next"]),
-        "T_Valeur": X.fill_table(wb, "T_Valeur", t["value"].rename(columns=TITRES_CORRIGES)),
-        "T_Regularite": X.fill_table(wb, "T_Regularite", t["regularity"].rename(columns=TITRES_CORRIGES)),
-        "T_Backtest": X.fill_table(wb, "T_Backtest", t["fc_summary"].reset_index()),  # Groupe est l'index
-        "T_Detail_Backtest": X.fill_table(wb, "T_Detail_Backtest", t["fc_detail"]),
+        "T_Prevision": X.fill_table(wb, "T_Prevision", previsions),
+        "T_Valeur": X.fill_table(wb, "T_Valeur", t["value"]),
+        "T_Regularite": X.fill_table(wb, "T_Regularite", t["regularity"])
+    }
+
+def fill_detail_backtest(wb, t):
+    detail = t["fc_detail"].copy()
+
+    detail["Date"] = detail["Date"].dt.strftime("%Y-%m")
+
+    detail = detail.rename(columns={
+        "Date": "Mois testé",
+        "Prévu": "Prévision"
+    })
+
+    detail = detail[[
+        "Groupe", "Mois testé", "Méthode",
+        "Prévision", "Réel", "Erreur absolue"
+    ]].sort_values(["Groupe", "Mois testé", "Méthode"])
+
+    return {
+        "T_Detail_Backtest": X.fill_table(
+            wb, "T_Detail_Backtest", detail
+        )
+    }
+
+def fill_backtest(wb, t):
+    import pandas as pd
+    from openpyxl.utils.cell import range_boundaries
+
+    detail = t["fc_detail"]
+    bilan = t["fc_summary"]
+    valeur = t["value"].set_index("Groupe")
+
+    scores = detail.pivot_table(
+        index="Groupe",
+        columns="Méthode",
+        values="Erreur absolue",
+        aggfunc="mean"
+    )
+
+    niveaux = detail.drop_duplicates(
+        ["Date", "Groupe"]
+    ).groupby("Groupe")["Réel"].mean()
+
+    # Reprendre les intitulés exacts du modèle actuel
+    feuille, tableau = X.tables(wb)["T_Backtest"]
+    c1, ligne, c2, _ = range_boundaries(tableau.ref)
+    colonnes = [
+        feuille.cell(ligne, col).value
+        for col in range(c1, c2 + 1)
+    ]
+    assert len(colonnes) == 19, "Structure du backtest inattendue."
+
+    lignes = []
+
+    for groupe, resultat in bilan.iterrows():
+        methode = resultat["Méthode choisie avant validation"]
+        reference = resultat["Référence choisie avant validation"]
+
+        erreurs = detail.loc[
+            detail["Groupe"] == groupe
+        ].pivot(
+            index="Date",
+            columns="Méthode",
+            values="Erreur absolue"
+        )
+
+        mois_gagnes = int(
+            (erreurs[methode] < erreurs[reference]).sum()
+        )
+
+        lignes.append([
+            groupe,
+            niveaux[groupe],
+            scores.loc[groupe, "Mois précédent"],
+            scores.loc[groupe, "Même mois N-1"],
+            scores.loc[groupe, "Moyenne 3 mois"],
+            scores.loc[groupe, "Holt-Winters"],
+            None, None, None, None,  # MASE non calculés
+            reference,
+            resultat["Erreur relative (%)"] / 100,
+            resultat["Gain (%)"] / 100,
+            mois_gagnes,
+            None,  # p-valeur non calculée
+            valeur.loc[groupe, "Verdict : prévisible ?"],
+            valeur.loc[groupe, "Erreur évitée par le modèle (unités/mois)"],
+            valeur.loc[groupe, "Équivalent en jours de vente"],
+            valeur.loc[groupe, "Méthode recommandée"]
+        ])
+
+    return {
+        "T_Backtest": X.fill_table(
+            wb, "T_Backtest",
+            pd.DataFrame(lignes, columns=colonnes)
+        )
     }
