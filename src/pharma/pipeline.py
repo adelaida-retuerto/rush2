@@ -101,6 +101,7 @@ def synthese(c, t: dict) -> dict:
         out["kpi"] = summary.kpis(c, t)
         out["insights"] = summary.insights(c, t)
         out["recommendations"] = summary.recommendations(c, t)
+        out["message"] = summary.key_message(c, t)
     return out
 
 

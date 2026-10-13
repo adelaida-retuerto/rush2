@@ -1,4 +1,4 @@
-"""Contenu de la feuille Synthèse : chiffres clés, insights, recommandations, limites.   [Jeanne · Adelaida]
+"""Contenu de la feuille Synthèse : message clé, chiffres clés, insights, recommandations, limites.   [Jeanne · Adelaida]
 
 Tout est recalculé à chaque mise à jour à partir des tables des trois flux (t) : aucune phrase
 chiffrée n'est écrite à la main. Les tailles (6 chiffres clés, 6 insights, 5 recommandations,
@@ -79,7 +79,7 @@ def kpis(c, t) -> pd.DataFrame:
         [_pct(top["Part du volume"]), f"des volumes : {top['Famille'].lower()} ({top['Groupes']})"],
         [f"{t['n_bad_months']} / {t['n_monthly_rows']}", "mois faux dans l'export mensuel : "
                                                          "ne pas l'utiliser pour commander"],
-        [_pct(part_n05c), f"des heures avec un hypnotique vendu comptent ≤ {seuil} unités : client reconnaissable"],
+        [_pct(part_n05c), f"des ventes horaires d'hypnotiques tiennent en ≤ {seuil} unités : identifiables"],
     ], columns=["Valeur", "Libellé"])
 
 
@@ -128,34 +128,60 @@ def insights(c, t) -> pd.DataFrame:
     return pd.DataFrame(lignes, columns=["Thème", "Chiffre", "Message"])
 
 
-# --- 3. Recommandations (5 lignes : destinataire, décision) -----------------------------------------
+# --- 3. Recommandations (5 leviers : axe, action précise et chiffrée) ---------------------------------
 def recommendations(c, t) -> pd.DataFrame:
     pics = t["peaks"].set_index("Groupe")
     jours = t["weekday"].set_index("Jour")["Total"]
+    parts_heure = t["hourly"].set_index("Heure")["Total"]
     matin, soir = _pointes(t)
     hausses = _hausses_grippe(t)
     seuil_grippe = t["flu_effect"].attrs.get("threshold", float("nan"))
     a_renforcer = [g for g in hausses.index if hausses[g] >= 0.10]  # repère +10 %, comme environment.py
     prevus = _groupes_prevus(t)
-    pic_r06 = pics.loc["R06", "Mois le plus fort"]
+    autres = len(G) - len(prevus)
+    seuil = config.SMALL_COUNT_THRESHOLD
+    part_n05c = t["privacy"].set_index(["Niveau", "Groupe"]).loc[("Heure", "N05C"), f"Part ≤ {seuil} unités"]
+
+    def pic(g: str) -> str:
+        """« mai, ×1,90 » : mois le plus fort et son indice de saison."""
+        return f"{pics.loc[g, 'Mois le plus fort'].lower()}, ×{_nombre(pics.loc[g, 'Indice max'], 2)}"
+
     return pd.DataFrame([
-        ["Pharmacien acheteur",
-         f"Constituer le stock avant chaque pic : {_nom('R06')} dès {_mois_avant(pic_r06)} (pic en {pic_r06.lower()}), "
-         f"{_nom('N02BE')} avant {pics.loc['N02BE', 'Mois le plus fort'].lower()}, {_nom('R03')} avant "
-         f"{pics.loc['R03', 'Mois le plus fort'].lower()}. Mise en avant réservée aux médicaments sans ordonnance ; "
-         "promotions sur la parapharmacie associée."],
-        ["Pharmacien acheteur",
-         f"Suivre chaque semaine le bulletin Sentinelles : au-dessus de {_nombre(seuil_grippe)} cas pour 100 000, "
-         f"renforcer le stock de {_liste([_nom(g) for g in a_renforcer])}."],
-        ["Titulaire",
-         f"Renforcer le comptoir le {jours.idxmax().lower()} et aux pointes de {matin} et {soir}."],
-        ["Titulaire",
-         "Refuser de transmettre l'export horaire ou journalier au laboratoire. Au plus des totaux mensuels, "
-         "sans N05B ni N05C, sous contrat écrit et après avis d'un juriste ou de l'Ordre."],
-        ["Manager",
-         "Commander avec les ventes recalculées (classeur du mois, feuille Outil), jamais avec l'export mensuel. "
-         f"Réserver le modèle de prévision à {_liste(prevus)} ; relancer le classeur à chaque nouvel export."],
-    ], columns=["Pour qui", "Recommandation"])
+        ["Anticiper les saisons",
+         f"Constituer le stock un mois avant chaque pic : {_nom('R06')} dès {_mois_avant(pics.loc['R06', 'Mois le plus fort'])} "
+         f"(pic en {pic('R06')} la moyenne) ; {_nom('N02BE')} dès {_mois_avant(pics.loc['N02BE', 'Mois le plus fort'])} "
+         f"({pic('N02BE')}) ; {_nom('R03')} dès {_mois_avant(pics.loc['R03', 'Mois le plus fort'])} ({pic('R03')}). "
+         "Mise en avant limitée aux médicaments sans ordonnance."],
+        ["Déclencher sur la grippe",
+         f"Suivre l'incidence Sentinelles chaque semaine. Au-delà de {_nombre(seuil_grippe)} cas pour 100 000, "
+         "augmenter le stock de "
+         + _liste([f"{_nom(g)} ({_pct(hausses[g], True)})" for g in a_renforcer]) + "."],
+        ["Caler l'effectif sur l'affluence",
+         f"Renforcer le comptoir le {jours.idxmax().lower()} ({_pct(jours.max() - 1, True)} de ventes) et aux "
+         f"pointes de {matin} et {soir} ({_pct(parts_heure[matin])} et {_pct(parts_heure[soir])} des ventes "
+         "de la journée)."],
+        ["Protéger les données de santé",
+         f"Ne céder aucun export horaire, journalier ou hebdomadaire : {_pct(part_n05c)} des heures avec un "
+         f"hypnotique vendu comptent {seuil} unités ou moins. Au plus des totaux mensuels sans N05B ni N05C, "
+         "sous contrat écrit et après avis juridique."],
+        ["Piloter sur des chiffres fiables",
+         f"Commander à partir des ventes recalculées, jamais de l'export mensuel ({t['n_bad_months']} mois sur "
+         f"{t['n_monthly_rows']} surestimés). Prévision par modèle pour {_liste(prevus)} ; règle simple pour les "
+         f"{autres} autres groupes."],
+    ], columns=["Axe", "Recommandation"])
+
+
+def key_message(c, t) -> str:
+    """Le message clé de la Synthèse : la situation et l'enjeu en une phrase."""
+    cumul = t["year_to_date"]
+    evolution = cumul["Cumul année en cours"].sum() / cumul["Cumul année précédente"].sum() - 1
+    volumes = t["group_volumes"].set_index("Groupe")["Part du volume"]
+    pics = t["peaks"].set_index("Groupe")
+    plus_saisonnier = pics["Amplitude max sur min"].astype(float).idxmax()
+    return (f"Une activité stable ({f'{evolution:+.1%}'.replace('.', ',').replace('%', chr(160) + '%')} sur un an), portée par le paracétamol "
+            f"({_pct(volumes['N02BE'])} des volumes) et rythmée par des saisons prévisibles (jusqu'à "
+            f"×{_nombre(pics.loc[plus_saisonnier, 'Amplitude max sur min'], 1)} pour {_nom(plus_saisonnier)}) : "
+            "le levier est d'anticiper le stock, et l'export détaillé ne doit pas sortir de la pharmacie.")
 
 
 # --- 4. Limites (6 lignes) ----------------------------------------------------------------------------
@@ -168,7 +194,7 @@ def limits(c) -> pd.DataFrame:
         ["Données d'observation", "On mesure des associations (grippe, saisons) ; aucune causalité n'est démontrée",
          "Tester un changement (stock, planning) avant / après"],
         ["Pharmacie probablement hors de France", "Ventes 7 j/7 de 7 h à 22 h, même les jours fériés : le lien avec la "
-         "grippe française reste une approximation", "Confirmer la localisation avec le client"],
+         "grippe française reste une approximation", "Confirmer la localisation de la pharmacie"],
         [f"{len(c.monthly)} mois d'historique", "Peu d'hivers pour juger la grippe et la prévision : les verdicts "
          "peuvent changer", "Relancer chaque mois : les tests se refont seuls"],
         ["Dernier jour incomplet", f"Export arrêté le {c.meta['last_day']:%d/%m/%Y} à {c.meta['last_hour']}h : "

@@ -1,10 +1,11 @@
 """Feuilles Synthèse et Prévision.   [Jeanne · Synthèse refaite par Adelaida]
 
 La Synthèse est la page d'accueil du client : une lecture stratégique en une page.
+  0. Message clé          : la situation en une phrase.
   1. Chiffres clés        : 6 cartes, un grand chiffre et une phrase courte.
   2. Ce qu'il faut retenir : 6 cartes d'insights (thème, chiffre marquant, message).
   3. Prévision du mois suivant : verdict par groupe (tableau, il grandit avec les groupes).
-  4. Recommandations      : une ligne par décision, avec son destinataire.
+  4. Recommandations      : 5 leviers d'action, chacun précis et chiffré.
   5. Limites              : ce que les données ne permettent pas de conclure.
 Les cartes sont des cellules nommées (taille fixe) ; le code n'écrit que dans ces cellules et
 dans les tableaux déclarés, le reste du modèle (mise en forme) n'est jamais touché.
@@ -28,10 +29,10 @@ SHEETS = ["Synthèse", "Prévision"]
 N_KPI, N_INSIGHTS, N_RECOS, N_LIMITES = 6, 6, 5, 6
 
 TABLES = ["T_Verdict", "T_Prevision", "T_Valeur", "T_Regularite", "T_Backtest", "T_Detail_Backtest"]
-NAMES = (["txt_sous_titre", "txt_prevision_note"]
+NAMES = (["txt_sous_titre", "txt_prevision_note", "message_cle"]
          + [f"kpi_{i}_{champ}" for i in range(1, N_KPI + 1) for champ in ("valeur", "libelle")]
          + [f"retenir_{i}_{champ}" for i in range(1, N_INSIGHTS + 1) for champ in ("theme", "chiffre", "texte")]
-         + [f"reco_{i}_{champ}" for i in range(1, N_RECOS + 1) for champ in ("cible", "texte")]
+         + [f"reco_{i}_{champ}" for i in range(1, N_RECOS + 1) for champ in ("axe", "texte")]
          + [f"limite_{i}_{champ}" for i in range(1, N_LIMITES + 1) for champ in ("limite", "consequence", "levee")])
 
 # Colonnes produites par analysis/forecast.py (Jeanne) et analysis/summary.verdict_table
@@ -56,13 +57,19 @@ POINTS = {"Gain (%)": S.FMT_QTY, "Erreur relative (%)": S.FMT_QTY, "Gain vs réf
 
 # --- Mise en forme des cartes (charte : sapin, sauge, brume ; ambre réservé aux alertes) -------
 FOND_CARTE = PatternFill(fill_type="solid", start_color=S.BRUME, end_color=S.BRUME)
-GRAND_CHIFFRE = Font(name=S.POLICE_TITRE, size=22, bold=True, color=S.SAPIN)
-CHIFFRE_ALERTE = Font(name=S.POLICE_TITRE, size=22, bold=True, color=S.AMBRE)
-LIBELLE = Font(name=S.POLICE_TEXTE, size=9, color=S.GRIS)
-THEME = Font(name=S.POLICE_TEXTE, size=9, bold=True, color="FFFFFF")
+# Tailles de la Synthèse : titre 28, titres secondaires 18, texte 12 (lisible à l'écran comme à l'impression)
+TITRE_SYNTHESE = Font(name=S.POLICE_TITRE, size=28, bold=True, color=S.SAPIN)
+TITRE_SECONDAIRE = Font(name=S.POLICE_TITRE, size=18, bold=True, color=S.SAPIN)
+MESSAGE = Font(name=S.POLICE_TITRE, size=18, italic=True, color=S.SAUGE)
+GRAND_CHIFFRE = Font(name=S.POLICE_TITRE, size=28, bold=True, color=S.SAPIN)
+CHIFFRE_ALERTE = Font(name=S.POLICE_TITRE, size=28, bold=True, color=S.AMBRE)
 CHIFFRE_INSIGHT = Font(name=S.POLICE_TITRE, size=18, bold=True, color=S.SAPIN)
-TEXTE = Font(name=S.POLICE_TEXTE, size=10, color=S.ENCRE)
-CIBLE = Font(name=S.POLICE_TEXTE, size=10, bold=True, color=S.SAPIN)
+LIBELLE = Font(name=S.POLICE_TEXTE, size=12, color=S.ENCRE)
+THEME = Font(name=S.POLICE_TEXTE, size=12, bold=True, color="FFFFFF")
+TEXTE = Font(name=S.POLICE_TEXTE, size=12, color=S.ENCRE)
+TEXTE_GRAS = Font(name=S.POLICE_TEXTE, size=12, bold=True, color=S.SAPIN)
+NOTE_12 = Font(name=S.POLICE_TEXTE, size=12, italic=True, color=S.GRIS)
+ENTETE_12 = Font(name=S.POLICE_TEXTE, size=12, bold=True, color="FFFFFF")
 CENTRE = Alignment(horizontal="center", vertical="center", wrap_text=True)
 HAUT_GAUCHE = Alignment(horizontal="left", vertical="top", wrap_text=True)
 GAUCHE = Alignment(horizontal="left", vertical="center", wrap_text=True, indent=1)
@@ -101,39 +108,56 @@ def _bloc(wb, ws, nom, ligne, col1, col2, font, align, fill=None, hauteur=None, 
     X.name_cell(wb, nom, ws, debut)
 
 
+def _titre(ws, cellule: str, texte: str) -> None:
+    """Titre secondaire de la Synthèse (18)."""
+    ws[cellule] = texte
+    ws[cellule].font = TITRE_SECONDAIRE
+    ws.row_dimensions[ws[cellule].row].height = 30
+
+
 def build_synthese(wb) -> None:
     ws = _sheet(wb, "Synthèse", S.SAPIN)
-    X.widths(ws, {get_column_letter(c): 13 for c in range(2, 14)})  # grille de 12 colonnes (B à M)
-    X.title(ws, "Synthèse : ce qu'il faut savoir, ce qu'il faut décider")
-    X.name_cell(wb, "txt_sous_titre", ws, "B3", "", S.NOTE)
+    X.widths(ws, {get_column_letter(c): 15 for c in range(2, 14)})  # grille de 12 colonnes (B à M)
+    ws["B2"] = "Synthèse stratégique"
+    ws["B2"].font = TITRE_SYNTHESE
+    ws.row_dimensions[2].height = 42
+    X.name_cell(wb, "txt_sous_titre", ws, "B3", "", NOTE_12)
+    # Le message clé : la situation en une phrase, sur toute la largeur
+    _bloc(wb, ws, "message_cle", 4, 2, 13, MESSAGE, HAUT_GAUCHE, None, 54)
 
-    # 1. Chiffres clés : 6 cartes de 2 colonnes (lignes 6 et 7)
-    X.h2(ws, "B5", "Chiffres clés")
+    # 1. Chiffres clés : 6 cartes de 2 colonnes
+    _titre(ws, "B6", "Chiffres clés")
     for i in range(N_KPI):
         c1 = 2 + 2 * i
         police = CHIFFRE_ALERTE if i + 1 in KPI_ALERTE else GRAND_CHIFFRE
-        _bloc(wb, ws, f"kpi_{i + 1}_valeur", 6, c1, c1 + 1, police, CENTRE, FOND_CARTE, 40)
-        _bloc(wb, ws, f"kpi_{i + 1}_libelle", 7, c1, c1 + 1, LIBELLE, CENTRE, FOND_CARTE, 56)
+        _bloc(wb, ws, f"kpi_{i + 1}_valeur", 7, c1, c1 + 1, police, CENTRE, FOND_CARTE, 48)
+        _bloc(wb, ws, f"kpi_{i + 1}_libelle", 8, c1, c1 + 1, LIBELLE, CENTRE, FOND_CARTE, 80)
 
-    # 2. Ce qu'il faut retenir : 6 cartes de 4 colonnes, sur deux rangées (lignes 10-12 et 14-16)
-    X.h2(ws, "B9", "Ce qu'il faut retenir")
+    # 2. Ce qu'il faut retenir : 6 cartes de 4 colonnes, sur deux rangées
+    _titre(ws, "B10", "Ce qu'il faut retenir")
     for i in range(N_INSIGHTS):
-        ligne = 10 if i < 3 else 14
+        ligne = 11 if i < 3 else 15
         c1 = 2 + 4 * (i % 3)
         bandeau = PatternFill(fill_type="solid", start_color=COULEURS_INSIGHTS[i], end_color=COULEURS_INSIGHTS[i])
-        _bloc(wb, ws, f"retenir_{i + 1}_theme", ligne, c1, c1 + 3, THEME, GAUCHE, bandeau, 20)
-        _bloc(wb, ws, f"retenir_{i + 1}_chiffre", ligne + 1, c1, c1 + 3, CHIFFRE_INSIGHT, GAUCHE, FOND_CARTE, 32)
-        _bloc(wb, ws, f"retenir_{i + 1}_texte", ligne + 2, c1, c1 + 3, TEXTE, HAUT_GAUCHE, FOND_CARTE, 72)
-        # une colonne vide entre deux cartes serait plus large que la grille : on garde un liseré blanc
+        _bloc(wb, ws, f"retenir_{i + 1}_theme", ligne, c1, c1 + 3, THEME, GAUCHE, bandeau, 24)
+        _bloc(wb, ws, f"retenir_{i + 1}_chiffre", ligne + 1, c1, c1 + 3, CHIFFRE_INSIGHT, GAUCHE, FOND_CARTE, 34)
+        _bloc(wb, ws, f"retenir_{i + 1}_texte", ligne + 2, c1, c1 + 3, TEXTE, HAUT_GAUCHE, FOND_CARTE, 100)
+        # un liseré blanc sépare deux cartes voisines
         for lg in range(ligne, ligne + 3):
             ws.cell(lg, c1 + 3).border = Border(right=Side(style="thick", color="FFFFFF"))
 
-    # 3. Prévision du mois suivant : verdict par groupe (tableau)
-    head, nxt = X.add_table(ws, "T_Verdict", 18, 2, H_VERDICT, capacity=len(config.GROUP_CODES),
-                            heading="Prévision du mois suivant : verdict par groupe", wrap=True,
+    # 3. Prévision du mois suivant : verdict par groupe (tableau, texte en 12)
+    _titre(ws, "B19", "Prévision du mois suivant")
+    head, nxt = X.add_table(ws, "T_Verdict", 20, 2, H_VERDICT, capacity=len(config.GROUP_CODES), wrap=True,
                             comment="Méthode choisie sur 12 mois, puis jugée sur les 12 mois suivants, jamais vus. "
                                     "« Référence simple retenue » = une règle simple suffit. Détail : feuille Prévision.",
                             formats={**TXT, **POINTS})
+    ws.cell(20, 2).font = NOTE_12
+    for col in range(2, 2 + len(H_VERDICT)):
+        ws.cell(head, col).font = ENTETE_12
+        ws.cell(head + 1, col).font = TEXTE  # ligne modèle : son style est recopié sur chaque ligne remplie
+    ws.row_dimensions[head].height = 48
+    ws.row_dimensions[head + 1].height = 34
     # Mise en évidence des groupes où un modèle fait mieux que la règle simple (verdict « Gain observé ... »)
     zone = f"C{head + 1}:C{head + len(config.GROUP_CODES)}"
     ws.conditional_formatting.add(zone, FormulaRule(formula=[f'LEFT($C{head + 1},4)="Gain"'],
@@ -141,27 +165,26 @@ def build_synthese(wb) -> None:
                                                     fill=PatternFill(fill_type="solid", start_color=S.BRUME,
                                                                      end_color=S.BRUME)))
 
-    # 4. Recommandations : destinataire à gauche, décision à droite
-    X.h2(ws, f"B{nxt}", "Recommandations")
+    # 4. Recommandations : l'axe à gauche, l'action précise et chiffrée à droite
+    _titre(ws, f"B{nxt}", "Recommandations")
     for i in range(N_RECOS):
         ligne = nxt + 1 + i
-        _bloc(wb, ws, f"reco_{i + 1}_cible", ligne, 2, 4, CIBLE, GAUCHE, FOND_CARTE, 48, LIGNE_BAS)
+        _bloc(wb, ws, f"reco_{i + 1}_axe", ligne, 2, 4, TEXTE_GRAS, GAUCHE, FOND_CARTE, 66, LIGNE_BAS)
         _bloc(wb, ws, f"reco_{i + 1}_texte", ligne, 5, 13, TEXTE, GAUCHE, None, None, LIGNE_BAS)
 
     # 5. Limites : ce que les données ne permettent pas de conclure
     debut = nxt + N_RECOS + 2
-    X.h2(ws, f"B{debut}", "Limites : ce que les données ne permettent pas de conclure")
-    for j, (texte, c1, c2) in enumerate([("Limite", 2, 4), ("Conséquence sur les conclusions", 5, 9),
-                                         ("Comment la lever", 10, 13)]):
+    _titre(ws, f"B{debut}", "Limites")
+    for texte, c1, c2 in [("Limite", 2, 4), ("Conséquence sur les conclusions", 5, 9), ("Comment la lever", 10, 13)]:
         ws.merge_cells(start_row=debut + 1, start_column=c1, end_row=debut + 1, end_column=c2)
         cell = ws.cell(debut + 1, c1, texte)
-        cell.font, cell.fill, cell.alignment = S.HEAD, S.HEAD_FILL, S.HEAD_ALIGN
+        cell.font, cell.fill, cell.alignment = ENTETE_12, S.HEAD_FILL, S.HEAD_ALIGN
         for col in range(c1, c2 + 1):
             ws.cell(debut + 1, col).fill = S.HEAD_FILL
-    ws.row_dimensions[debut + 1].height = 24
+    ws.row_dimensions[debut + 1].height = 26
     for i in range(N_LIMITES):
         ligne = debut + 2 + i
-        _bloc(wb, ws, f"limite_{i + 1}_limite", ligne, 2, 4, CIBLE, GAUCHE, FOND_CARTE, 40, LIGNE_BAS)
+        _bloc(wb, ws, f"limite_{i + 1}_limite", ligne, 2, 4, TEXTE_GRAS, GAUCHE, FOND_CARTE, 50, LIGNE_BAS)
         _bloc(wb, ws, f"limite_{i + 1}_consequence", ligne, 5, 9, TEXTE, GAUCHE, None, None, LIGNE_BAS)
         _bloc(wb, ws, f"limite_{i + 1}_levee", ligne, 10, 13, TEXTE, GAUCHE, None, None, LIGNE_BAS)
 
@@ -210,7 +233,8 @@ def fill(wb, c, t) -> dict[str, int]:
     if "kpi" in t:  # la synthèse croise les trois flux : remplie seulement quand tout est là
         _remplir_cartes(wb, "kpi", t["kpi"], ["valeur", "libelle"])
         _remplir_cartes(wb, "retenir", t["insights"], ["theme", "chiffre", "texte"])
-        _remplir_cartes(wb, "reco", t["recommendations"], ["cible", "texte"])
+        _remplir_cartes(wb, "reco", t["recommendations"], ["axe", "texte"])
+        X.set_named(wb, "message_cle", t["message"])
     else:
         X.set_named(wb, "kpi_1_libelle", "En attente de l'intégration des trois flux")
     _remplir_cartes(wb, "limite", t["limits"], ["limite", "consequence", "levee"])
