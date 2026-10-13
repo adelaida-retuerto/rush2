@@ -16,7 +16,7 @@ import importlib
 
 from .. import config
 
-SHEET_ORDER = ["Synthèse", "Cadrage", "Outil", "Stats_Groupes", "Stats_Calendrier", "Stats_Mensuel",
+SHEET_ORDER = ["Synthèse", "Outil", "Stats_Groupes", "Stats_Calendrier", "Stats_Mensuel",
                "Environnement", "Prévision", "Confidentialité", "État_des_données", "Données_Jour", "Données_Heure"]
 # Modules de feuilles de chaque flux (importés seulement quand on en a besoin)
 # Modules de feuilles de chaque bloc : forecast (Jeanne), sales (Iman), data (Adelaida)
@@ -39,11 +39,7 @@ def build_template(path: Path = config.TEMPLATE_PATH, flux: list[str] = ALL_FLUX
     wb = Workbook()
     wb.remove(wb.active)
     for m in modules(flux):
-        if m.__name__.endswith("sheets_summary"):
-            from ..analysis import forecast
-            m.build(wb, forecast.summary_columns())
-        else:
-            m.build(wb)
+        m.build(wb)
     wb._sheets = [wb[n] for n in SHEET_ORDER if n in wb.sheetnames]
     wb.active = 0
     for ws in wb.worksheets:

@@ -152,12 +152,12 @@ rush2-pharma/
 │   │   ├── profiles.py          jours et heures                                (Adelaida)
 │   │   ├── privacy.py           réidentification, RGPD                         (Adelaida)
 │   │   ├── forecast.py          test de prévision                              (Jeanne)
-│   │   └── summary.py           synthèse, besoins, limites                     (Jeanne)
+│   │   └── summary.py           synthèse : chiffres clés, insights, recommandations, limites (Jeanne)
 │   └── workbook/                COUCHE 3 · remplir le classeur et le contrôler
 │       ├── styles.py            couleurs, polices                              (Iman)
 │       ├── sheets_sales.py      feuilles de statistiques                       (Iman)
 │       ├── sheets_tool.py       outil de sélection                             (Iman)
-│       ├── sheets_summary.py    Synthèse, Cadrage, Prévision                   (Jeanne)
+│       ├── sheets_summary.py    Synthèse, Prévision                            (Jeanne)
 │       ├── sheets_data.py       État des données, Confidentialité              (Adelaida)
 │       └── tables.py · template.py · update.py · verify.py                     (Adelaida)
 │

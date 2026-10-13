@@ -85,25 +85,23 @@ def analyse_forecast(c, base: dict) -> dict:
         "Repli vers la référence si le modèle sélectionné "
         "dégrade la MAE en validation."
     )
-    t["needs"] = summary.needs()
-    t["limits"] = summary.limits(c)
-    t["decisions"] = summary.decisions(c, base)
-    t["risks"] = summary.project_risks()
     t["verdict"] = summary.verdict_table(t)
     return t
 
 
 def synthese(c, t: dict) -> dict:
-    """Tables qui croisent les trois flux (Synthèse, critères de succès). Remplies à l'intégration ;
-    tant qu'un flux manque, la feuille affiche « en attente de l'intégration »."""
+    """Contenu de la Synthèse, qui croise les trois flux : chiffres clés, insights, recommandations,
+    limites. Rempli à l'intégration ; tant qu'un flux manque, la feuille affiche « en attente »."""
     from .analysis import summary
-    needed = {"group_volumes", "seasonality", "weekday", "hourly", "flu_effect", "fc_summary", "year_to_date"}
+    needed = {"group_volumes", "peaks", "weekday", "hourly", "flu_effect", "privacy", "value", "year_to_date"}
     out = {"subtitle": (f"8 groupes ATC - {config.UNIT_LABEL} - données jusqu'au {c.daily.index.max():%d/%m/%Y}, "
-                        f"mis à jour le {dt.date.today():%d/%m/%Y}.")}
+                        f"mis à jour le {dt.date.today():%d/%m/%Y}."),
+           "limits": summary.limits(c)}
     if needed <= set(t):
-        out["criteria"] = summary.success_criteria(c, t)
-        out["messages"] = summary.key_messages(c, t)
         out["kpi"] = summary.kpis(c, t)
+        out["insights"] = summary.insights(c, t)
+        out["recommendations"] = summary.recommendations(c, t)
+        out["message"] = summary.key_message(c, t)
     return out
 
 
