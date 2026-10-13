@@ -1,6 +1,39 @@
 from pathlib import Path
 import pandas as pd
 
+def prevoir_holt_winters(historique):
+    from statsmodels.tsa.holtwinters import ExponentialSmoothing
+
+    # Utiliser jusqu'à 36 mois de ventes antérieures
+    donnees = historique.tail(36).copy()
+    donnees.index = donnees.index.to_period("M").to_timestamp()
+    donnees = donnees.asfreq("MS")
+
+    if len(donnees) < 36:
+        raise ValueError("Holt-Winters nécessite ici 36 mois d'historique.")
+
+    if donnees.isna().any().any():
+        raise ValueError("Mois ou quantités manquants dans l'historique.")
+
+    predictions = {}
+
+    for groupe in donnees.columns:
+        modele = ExponentialSmoothing(
+            donnees[groupe],
+            trend="add",
+            damped_trend=True,
+            seasonal="add",
+            seasonal_periods=12,
+            initialization_method="estimated"
+        )
+
+        ajustement = modele.fit(optimized=True)
+        predictions[groupe] = max(
+            0.0, float(ajustement.forecast(1).iloc[0])
+        )
+
+    return pd.Series(predictions)
+
 def evaluer_methodes(ventes, dates):
     lignes = []
 
@@ -34,7 +67,7 @@ def evaluer_methodes(ventes, dates):
 
     return pd.DataFrame(lignes)
 
-def backtest(monthly):
+def backtest_quatre_methodes(monthly):
     # Normaliser les dates pour retrouver le même mois de l'année précédente
     ventes = monthly.copy().sort_index()
     ventes.index = ventes.index.to_period("M").to_timestamp()
@@ -115,6 +148,7 @@ def next_month_forecast(monthly, detail, bilan):
         ].mean()
     }
 
+    predictions["Holt-Winters"] = prevoir_holt_winters(ventes)
     choix = bilan["Méthode choisie avant validation"]
 
     erreurs = detail.loc[
@@ -168,6 +202,94 @@ def demand_regularity(c):
     })
 
     return resultat
+
+def backtest(monthly):
+    detail, bilan = bilan_cinq_methodes(monthly)
+
+    bilan = bilan.rename(columns={
+        "Méthode sélectionnée": "Méthode choisie avant validation",
+        "Référence sélectionnée": "Référence choisie avant validation",
+    })
+
+    dates = pd.DatetimeIndex(sorted(detail["Date"].unique()))
+    bilan.attrs.update({
+        "n_test": len(dates),
+        "test_start": dates.min(),
+        "test_end": dates.max(),
+    })
+
+    # Volume moyen par jour calendaire sur les mois de validation
+    reels = detail.drop_duplicates(["Date", "Groupe"]).copy()
+    reels["Jours du mois"] = reels["Date"].dt.days_in_month
+
+    volumes = reels.groupby("Groupe").agg(
+        quantite_totale=("Réel", "sum"),
+        jours_totaux=("Jours du mois", "sum")
+    )
+
+    bilan["Moyenne par jour sur validation"] = (
+        volumes["quantite_totale"] / volumes["jours_totaux"]
+    )
+    return detail, bilan
+
+def business_value(bilan):
+    lignes = []
+
+    for groupe, resultat in bilan.iterrows():
+        gain = (
+            resultat["MAE référence"] - resultat["MAE méthode"]
+        )
+
+        if gain > 0:
+            verdict = "Gain observé ; utilité à confirmer"
+            methode = resultat["Méthode choisie avant validation"]
+        elif gain < 0:
+            verdict = "Modèle moins précis que la référence"
+            methode = resultat["Référence choisie avant validation"]
+        else:
+            verdict = "Référence simple retenue"
+            methode = resultat["Référence choisie avant validation"]
+
+        lignes.append({
+            "Groupe": groupe,
+            "Verdict : prévisible ?": verdict,
+            "Méthode recommandée": methode,
+            "Erreur évitée par le modèle (unités/mois)": gain,
+                       "Équivalent en jours devente": (
+                gain / resultat["Moyenne par jour sur validation"]
+                if resultat["Moyenne par jour sur validation"] > 0
+                else None
+            )
+        })
+
+    return pd.DataFrame(lignes)
+
+def previsions_recommandees(monthly, detail, bilan):
+    # Conserver le bilan de validation original
+    bilan_recommande = bilan.copy()
+    recommandations = business_value(bilan).set_index("Groupe")
+
+    scores = detail.pivot_table(
+        index="Groupe",
+        columns="Méthode",
+        values="Erreur absolue",
+        aggfunc="mean"
+    )
+
+    for groupe in bilan_recommande.index:
+        methode = recommandations.loc[groupe, "Méthode recommandée"]
+
+        bilan_recommande.loc[
+            groupe, "Méthode choisie avant validation"
+        ] = methode
+
+        bilan_recommande.loc[groupe, "MAE méthode"] = scores.loc[
+            groupe, methode
+        ]
+
+    return next_month_forecast(
+        monthly, detail, bilan_recommande
+    )
 
 def main():
     racine = Path(__file__).resolve().parents[3]
@@ -480,8 +602,8 @@ def main():
     
     print("\nContrôles réussis : prévisions complètes et fourchettes cohérentes.")
     
-    detail_fonction, bilan_fonction = backtest(ventes)
-    
+    detail_fonction, bilan_fonction = backtest_quatre_methodes(ventes)
+
     pd.testing.assert_frame_equal(bilan_fonction, bilan_final)
     
     print("Fonction backtest vérifiée : résultats identiques.")
@@ -498,6 +620,108 @@ def main():
     assert prevision_fonction["Date"].dt.is_month_end.all()
     
     print("Fonction de prévision vérifiée : résultats identiques, dates en fin de mois.")
+
+def comparer_holt_winters(ventes):
+    ventes = ventes.copy().sort_index()
+    ventes.index = ventes.index.to_period("M").to_timestamp()
+    dates_test = ventes.index[-12:]
+
+    # Résultats des quatre méthodes déjà testées
+    detail = evaluer_methodes(ventes, dates_test)
+    lignes = []
+
+    for date in dates_test:
+        historique = ventes.loc[ventes.index < date]
+        predictions = prevoir_holt_winters(historique)
+
+        for groupe in ventes.columns:
+            reel = ventes.loc[date, groupe]
+            prevu = predictions[groupe]
+
+            lignes.append({
+                "Date": date,
+                "Groupe": groupe,
+                "Méthode": "Holt-Winters",
+                "Réel": reel,
+                "Prévu": prevu,
+                "Erreur absolue": abs(reel - prevu)
+            })
+
+    detail = pd.concat(
+        [detail, pd.DataFrame(lignes)],
+        ignore_index=True
+    )
+
+    scores = detail.pivot_table(
+        index="Groupe",
+        columns="Méthode",
+        values="Erreur absolue",
+        aggfunc="mean"
+    )
+
+    return detail, scores
+
+def selection_holt_winters(ventes):
+    ventes = ventes.copy().sort_index()
+    ventes.index = ventes.index.to_period("M").to_timestamp()
+
+    lignes = []
+
+    for date in ventes.index[-24:-12]:
+        historique = ventes.loc[ventes.index < date]
+        predictions = prevoir_holt_winters(historique)
+
+        for groupe in ventes.columns:
+            lignes.append({
+                "Groupe": groupe,
+                "Erreur absolue": abs(
+                    ventes.loc[date, groupe] - predictions[groupe]
+                )
+            })
+
+    return pd.DataFrame(lignes).groupby("Groupe")[
+        "Erreur absolue"
+    ].mean()
+
+def bilan_cinq_methodes(ventes):
+    _, ancien_bilan = backtest_quatre_methodes(ventes)
+    selection = ancien_bilan.attrs["scores_selection"].copy()
+    selection["Holt-Winters"] = selection_holt_winters(ventes)
+
+    detail, scores_validation = comparer_holt_winters(ventes)
+
+    references = [
+        "Mois précédent",
+        "Moyenne 3 mois",
+        "Même mois N-1"
+    ]
+
+    choix = selection.idxmin(axis=1)
+    choix_reference = selection[references].idxmin(axis=1)
+
+    bilan = pd.DataFrame(index=selection.index)
+    bilan["Méthode sélectionnée"] = choix
+    bilan["Référence sélectionnée"] = choix_reference
+
+    bilan["MAE méthode"] = [
+        scores_validation.loc[g, choix[g]]
+        for g in bilan.index
+    ]
+    bilan["MAE référence"] = [
+        scores_validation.loc[g, choix_reference[g]]
+        for g in bilan.index
+    ]
+
+    bilan["Gain (%)"] = (
+        1 - bilan["MAE méthode"] / bilan["MAE référence"]
+    ) * 100
+
+    bilan["Erreur relative (%)"] = (
+        bilan["MAE méthode"]
+        / ventes.sort_index().tail(12).mean().replace(0, float("nan"))
+    ) * 100
+
+    return detail, bilan
 
 if __name__ == "__main__":
     main()

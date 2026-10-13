@@ -68,14 +68,23 @@ def analyse_forecast(c, base: dict) -> dict:
     from .analysis import forecast, summary
     t = {}
     t["fc_detail"], t["fc_summary"] = forecast.backtest(c.monthly)
-    t["fc_next"] = forecast.next_month_forecast(c.monthly, t["fc_detail"], t["fc_summary"])
+    t["fc_next"] = forecast.previsions_recommandees(
+        c.monthly, t["fc_detail"], t["fc_summary"]
+    )
     t["value"] = forecast.business_value(t["fc_summary"])
     t["regularity"] = forecast.demand_regularity(c)
     s = t["fc_summary"].attrs
-    t["fc_note"] = (f"Backtest en origine glissante : {s['n_test']} mois testés ({s['test_start']:%m/%Y} à "
-                    f"{s['test_end']:%m/%Y}), chaque prévision n'utilise que les mois antérieurs. Verdict « Oui » si le "
-                    f"modèle réduit l'erreur d'au moins {config.SKILL_THRESHOLD:.0%} par rapport à la meilleure règle "
-                    "simple, de façon significative (p < 0,10).")
+    t["fc_note"] = (
+        f"Validation glissante sur {s['n_test']} mois "
+        f"({s['test_start']:%m/%Y} à {s['test_end']:%m/%Y}), "
+        "après sélection sur les 12 mois précédents. "
+        "Chaque prévision utilise uniquement les ventes antérieures. "
+        "Cinq méthodes comparées, dont Holt-Winters et une moyenne "
+        "saisonnière sur deux ans. Analyse exploratoire ; "
+        "fourchettes indicatives sans garantie de couverture. "
+        "Repli vers la référence si le modèle sélectionné "
+        "dégrade la MAE en validation."
+    )
     t["needs"] = summary.needs()
     t["limits"] = summary.limits(c)
     t["decisions"] = summary.decisions(c, base)
